@@ -1,0 +1,3 @@
+package basic
+
+a: b: 42

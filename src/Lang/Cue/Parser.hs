@@ -746,12 +746,12 @@ numberLiteral = do
         'P' -> i**5
 
 integerLiteral :: Parser Integer
-integerLiteral = numberLiteral >>= \case
+integerLiteral = try numberLiteral >>= \case
   Left  _ -> fail "expected integer found float"
   Right n -> pure n
 
 floatLiteral :: Parser Double
-floatLiteral = numberLiteral >>= \case
+floatLiteral = try numberLiteral >>= \case
   Right _ -> fail "expected float found integer"
   Left  f -> pure f
 
@@ -859,7 +859,7 @@ postProcess l = case foldr fuse [] l of
     fuse x l = x : l
 
 stringLiteral :: Parser Text
-stringLiteral = stringOrInterpolationLiteral >>= \case
+stringLiteral = try stringOrInterpolationLiteral >>= \case
   Left _  -> fail "expected string found interpolation"
   Right s -> pure s
 

@@ -1,5 +1,6 @@
 module Lang.Cue.Printer where
 
+import Data.Functor ((<&>))
 import Data.Maybe (maybeToList, catMaybes)
 import Data.List (intersperse)
 import Data.Text.Lazy.Builder (Builder, fromText, fromString, toLazyText)
@@ -123,11 +124,12 @@ instance Printer AttributeToken where
 
 instance Printer SourceFile where
   build i (SourceFile ident attribs imports decls) =
-    blockWith i "" "" "" $ concat
-      [ build i <$> maybeToList ident
+    listWith i "\n" $ concat
+      [ maybeToList $ ident <&> \n -> "package " <> build i n
       , build i <$> attribs
       , build i <$> imports
       , build i <$> decls
+      , [""] -- forces a newline at the end of the file
       ]
 
 instance Printer Import where
