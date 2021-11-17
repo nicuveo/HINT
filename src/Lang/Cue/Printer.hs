@@ -65,15 +65,8 @@ instance Printer Token where
 instance Printer [Token] where
   build i = listWith i "" " "
 
-instance Printer Name where
-  build i (Name n) = fromText n
-
 instance Printer Identifier where
-  build i (Identifier n h d) = mconcat
-    [ if h then "_" else ""
-    , if d then "#" else ""
-    , build i n
-    ]
+  build _ (Identifier t) = fromText t
 
 instance Printer Keyword where
   build _ = \case

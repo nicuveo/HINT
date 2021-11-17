@@ -22,43 +22,22 @@ import qualified Text.Megaparsec.Char.Lexer as L
 --------------------------------------------------------------------------------
 -- Identifier
 
-newtype Name = Name Text
-  deriving (Show, Eq, Ord)
-
-instance IsString Name where
-  fromString = fromMaybe (error "invalid identifier literal") . mkName . fromString
-
-mkName :: MonadFail m => Text -> m Name
-mkName n = case T.uncons n of
-  Nothing    -> fail "name cannot be empty"
-  Just (h,t) -> do
-    unless (isAlpha h) $
-      fail "name must start with a letter"
-    unless (T.all (\c -> isAlpha c || isDigit c || c == '_') t) $
-      fail "name body must only contain letters, digits, or underscore"
-    pure $ Name n
-
-
-data Identifier = Identifier
-  { idName         :: Name
-  , idIsHidden     :: Bool
-  , idIsDefinition :: Bool
-  }
+newtype Identifier = Identifier Text
   deriving (Show, Eq, Ord)
 
 instance IsString Identifier where
-  fromString = fromMaybe (error "invalid identifier literal") . mkIdentifier . fromString
+  fromString = Identifier . fromString
 
 mkIdentifier :: MonadFail m => Text -> m Identifier
-mkIdentifier i = fromMaybe (go False False i) $ choice
-  [ go True  True  <$> T.stripPrefix "_#" i
-  , go False True  <$> T.stripPrefix "#"  i
-  , go True  False <$> T.stripPrefix "_"  i
-  ]
-  where
-    go hidden def n = do
-      name <- mkName n
-      pure $ Identifier name hidden def
+mkIdentifier i = do
+  let root = fromMaybe i $ T.stripPrefix "_#" i <|> T.stripPrefix "#" i
+  case T.uncons root of
+    Just (h, t) -> do
+      unless (isAlpha h || h == '_') $
+        fail "identifier must start with a letter (or modifiers)"
+      unless (T.all (\c -> isAlpha c || isDigit c || c == '_') t) $
+        fail "identifier body must only contain letters or digits"
+      pure $ Identifier i
 
 
 --------------------------------------------------------------------------------
@@ -126,7 +105,7 @@ data Operator
   deriving (Show, Eq, Ord, Enum, Bounded)
 
 data Attribute = Attribute
-  { attributeName   :: Name
+  { attributeName   :: Identifier
   , attributeTokens :: [AttributeToken]
   }
   deriving (Show, Eq)
@@ -150,14 +129,14 @@ data InterpolationElement
 -- AST
 
 data SourceFile = SourceFile
-  { moduleName         :: Maybe Name
+  { moduleName         :: Maybe Identifier
   , moduleAttributes   :: [Attribute]
   , moduleImports      :: [Import]
   , moduleDeclarations :: [Declaration]
   } deriving (Show, Eq)
 
 data Import = Import
-  { importName  :: Maybe Name
+  { importName  :: Maybe Identifier
   , importPath  :: Text
   , importIdent :: Maybe Identifier
   } deriving (Show, Eq)

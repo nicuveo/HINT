@@ -34,7 +34,7 @@ instance Arbitrary Token where
       pure $ TokenAttribute $ Attribute name toks
     _ -> []
 
-instance Arbitrary Name where
+instance Arbitrary Identifier where
   arbitrary = genName `suchThat` notAKeyword
     where
       genName = do
@@ -42,10 +42,10 @@ instance Arbitrary Name where
           letter = ['a'..'z'] ++ ['A'..'Z']
           digit  = ['0'..'9']
           body   = '_' : letter ++ digit
-        -- m <- elements ["", "#", "_#"]
+        m <- elements ["", "#", "_#"]
         h <- elements letter
         t <- listOf $ elements body
-        pure $ Name $ T.pack (h:t)
+        pure $ Identifier $ T.pack (m ++ h:t)
       notAKeyword = flip notElem
         [ "package"
         , "import"
@@ -57,12 +57,6 @@ instance Arbitrary Name where
         , "if"
         , "let"
         ]
-
-instance Arbitrary Identifier where
-  arbitrary = Identifier
-    <$> arbitrary
-    <*> arbitrary
-    <*> arbitrary
 
 instance Arbitrary Keyword where
   arbitrary = elements [minBound .. maxBound]
