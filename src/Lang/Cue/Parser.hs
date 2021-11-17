@@ -270,50 +270,15 @@ block = many $ declaration <* comma
 declaration :: Parser Declaration
 declaration = choice
   [ DeclarationEllipsis  <$> ellipsis
-  , DeclarationEmbedding <$> embedding
   , DeclarationLetClause <$> letClause
   , DeclarationAttribute <$> attribute
   , DeclarationField     <$> field
-  , fail "did not find a valid declaration"
+  , DeclarationEmbedding <$> embedding
+  , fail "expected a declaration: one of [ellipsis, let clause, attribute, field or embedding]"
   ]
-
-field :: Parser Field
-field = do
-  labels  <- some $ try $ labelElement <* operator OperatorColon
-  alias   <- aliasedExpression
-  attribs <- many attribute
-  pure $ Field (NE.fromList labels) alias attribs
-
-labelElement :: Parser Label
-labelElement = do
-  name <- optional $ try $ identifier <* operator OperatorBind
-  expr <- labelExpr
-  pure $ Label name expr
-
-labelExpr :: Parser LabelExpression
-labelExpr = labelNameExpr <|> labelAliasExpr
-  where
-    labelNameExpr = do
-      name <- labelName
-      opt  <- optional (operator OperatorOption) <&> \case
-        Just _  -> Optional
-        Nothing -> Required
-      pure $ LabelName opt name
-    labelAliasExpr = LabelAlias <$> brackets aliasedExpression
-
-labelName :: Parser LabelName
-labelName = do
-  Identifier n <- identifier
-  pure n -- FIXME: simpleStringLit <|> identifier
 
 ellipsis :: Parser Ellipsis
 ellipsis = operator OperatorEllipsis *> optional expression
-
-embedding :: Parser Embedding
-embedding = choice
-  [ EmbeddedComprehension <$> comprehension
-  , EmbeddedExpression    <$> aliasedExpression
-  ]
 
 letClause :: Parser LetClause
 letClause = do
@@ -322,6 +287,54 @@ letClause = do
   operator OperatorBind
   e <- expression
   pure $ LetClause n e
+
+field :: Parser Field
+field = do
+  labels  <- some $ try $ fieldLabel <* operator OperatorColon
+  fexpr   <- aliasedExpression
+  attribs <- many attribute
+  let result = go fexpr labels
+  pure $ result { fieldAttributes = attribs }
+  where
+    mkExpr = AliasedExpression Nothing
+      . Unary
+      . UnaryExpression []
+      . PrimaryOperand
+      . OperandLiteral
+      . StructLiteral
+      . pure
+      . DeclarationField
+    go expr [label]      = Field label expr []
+    go expr (label:subs) = Field label (mkExpr $ go expr subs) []
+
+fieldLabel :: Parser Label
+fieldLabel = do
+  name <- optional $ try $ identifier <* operator OperatorBind
+  expr <- labelExpr
+  pure $ Label name expr
+
+labelExpr :: Parser LabelExpression
+labelExpr = stringLabel <|> constraintLabel <|> identifierLabel
+  where
+    optionality = optional (operator OperatorOption) <&> \case
+      Just _  -> Optional
+      Nothing -> Required
+    stringLabel = do
+      text <- simpleStringLiteral 0
+      opt  <- optionality
+      pure $ LabelString text opt
+    identifierLabel = do
+      ident <- identifier
+      opt   <- optionality
+      pure $ LabelIdentifier ident opt
+    constraintLabel =
+      LabelConstraint <$> brackets aliasedExpression
+
+embedding :: Parser Embedding
+embedding = choice
+  [ EmbeddedComprehension <$> comprehension
+  , EmbeddedExpression    <$> aliasedExpression
+  ]
 
 
 --------------------------------------------------------------------------------
@@ -665,7 +678,7 @@ charLiteral hashCount allowNewline isSingleQuotes = do
              'x'  -> do
                -- TODO: handle out of bounds hex values
                unless isSingleQuotes $
-                 fail "unexpected byte value in string literal"
+                 fail "unexpected hex value in string literal"
                value <- count 2 hexDigitChar <|> fail "expecting 2 hexadecimal digits after \\x"
                pure $ InterpolationString $ T.singleton $ chr $ L.foldl' (\acc d -> 16*acc + digitToInt d) 0 value
              '(' -> do
@@ -676,7 +689,7 @@ charLiteral hashCount allowNewline isSingleQuotes = do
                pure $ InterpolationExpression e
              oct -> do
                unless isSingleQuotes $
-                 fail "unexpected byte value in string literal"
+                 fail "unexpected octal value in string literal"
                value <- count 2 octDigitChar <|> fail "expecting 3 octal digits after \\"
                pure $ InterpolationString $ T.singleton $ chr $ L.foldl' (\acc d -> 8*acc + digitToInt d) 0 $ oct:value
      | otherwise -> pure $ InterpolationString $ T.singleton c

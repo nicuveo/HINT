@@ -198,19 +198,20 @@ data Declaration
   deriving (Show, Eq)
 
 data Field = Field
-  { fieldLabels     :: NonEmpty Label
+  { fieldLabels     :: Label
   , fieldExpression :: AliasedExpression
   , fieldAttributes :: [Attribute]
   } deriving (Show, Eq)
 
 data Label = Label
-  { labelIdentifier :: Maybe Identifier
+  { labelAlias      :: Maybe Identifier
   , labelExpression :: LabelExpression
   } deriving (Show, Eq)
 
 data LabelExpression
-  = LabelName  Optional LabelName
-  | LabelAlias AliasedExpression
+  = LabelIdentifier Identifier    Optional
+  | LabelString     StringLiteral Optional
+  | LabelConstraint AliasedExpression
   deriving (Show, Eq)
 
 data Optional

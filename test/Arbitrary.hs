@@ -83,15 +83,14 @@ instance Arbitrary AttributeToken where
 
 instance Arbitrary SourceFile where
   arbitrary = scale (`div` 2) $ SourceFile
-    <$> arbitrary
+    <$> (Just <$> arbitrary)
     <*> arbitrary
     <*> arbitrary
     <*> arbitrary
   shrink (SourceFile a b c d) = concat
-    [ SourceFile <$> shrink a <*> pure b   <*> pure c   <*> pure d
-    , SourceFile <$> pure a   <*> shrink b <*> pure c   <*> pure d
-    , SourceFile <$> pure a   <*> pure b   <*> shrink c <*> pure d
-    , SourceFile <$> pure a   <*> pure b   <*> pure c   <*> shrink d
+    [ SourceFile a <$> shrink b <*> pure c   <*> pure d
+    , SourceFile a <$> pure b   <*> shrink c <*> pure d
+    , SourceFile a <$> pure b   <*> pure c   <*> shrink d
     ]
 
 instance Arbitrary Import where
@@ -102,12 +101,14 @@ instance Arbitrary Import where
 
 instance Arbitrary Declaration where
   arbitrary = oneof
-    [ DeclarationEllipsis  <$> arbitrary
-    -- , DeclarationEmbedding <$> arbitrary
-    -- , DeclarationLetClause <$> arbitrary
-    -- , DeclarationAttribute <$> arbitrary
+    [ DeclarationField     <$> scale (`div` 2) arbitrary
+    , DeclarationEllipsis  <$> scale (`div` 2) arbitrary
+    , DeclarationEmbedding <$> scale (`div` 2) arbitrary
+    , DeclarationLetClause <$> scale (`div` 2) arbitrary
+    , DeclarationAttribute <$> scale (`div` 2) arbitrary
     ]
   shrink = \case
+    DeclarationField     d -> DeclarationField     <$> shrink d
     DeclarationEllipsis  d -> DeclarationEllipsis  <$> shrink d
     DeclarationEmbedding d -> DeclarationEmbedding <$> shrink d
     DeclarationLetClause d -> DeclarationLetClause <$> shrink d
@@ -115,20 +116,34 @@ instance Arbitrary Declaration where
 
 instance Arbitrary Field where
   arbitrary = Field
-    <$> arbitraryNonEmpty
+    <$> arbitrary
     <*> arbitrary
     <*> arbitrary
+  shrink (Field a b c) = concat
+    [ Field <$> shrink a <*> pure   b <*> pure   c
+    , Field <$> pure   a <*> shrink b <*> pure   c
+    , Field <$> pure   a <*> pure   b <*> shrink c
+    ]
 
 instance Arbitrary Label where
   arbitrary = Label
     <$> arbitrary
     <*> arbitrary
+  shrink (Label a e) = concat
+    [ Label <$> shrink a <*> pure   e
+    , Label <$> pure   a <*> shrink e
+    ]
 
 instance Arbitrary LabelExpression where
   arbitrary = oneof
-    [ LabelName  <$> arbitrary <*> arbitraryText
-    , LabelAlias <$> arbitrary
+    [ LabelString     <$> arbitraryStringLiteral <*> arbitrary
+    , LabelIdentifier <$> arbitrary <*> arbitrary
+    , LabelConstraint <$> arbitrary
     ]
+  shrink = \case
+    LabelIdentifier _ _ -> []
+    LabelString     t o -> LabelString <$> shrinkStringLiteral t <*> pure o
+    LabelConstraint   c -> LabelConstraint <$> shrink c
 
 instance Arbitrary Optional where
   arbitrary = elements [Optional, Required]
@@ -374,6 +389,17 @@ arbitraryImport = T.pack <$> listOf1 (elements ['a'..'z'])
 
 arbitraryNonEmpty :: Arbitrary a => Gen (NonEmpty a)
 arbitraryNonEmpty = NE.fromList <$> listOf1 arbitrary
+
+arbitraryStringLiteral :: Gen StringLiteral
+arbitraryStringLiteral = oneof
+  [ Left  <$> arbitraryInterpolation
+  , Right <$> arbitraryText
+  ]
+
+shrinkStringLiteral :: StringLiteral -> [StringLiteral]
+shrinkStringLiteral = \case
+  Left  i -> Left <$> shrinkInterpolation i
+  Right _ -> []
 
 arbitraryInterpolation :: Gen Interpolation
 arbitraryInterpolation = do
