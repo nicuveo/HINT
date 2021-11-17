@@ -15,7 +15,7 @@ TODO:
     - [ ] fix field parsing
     - [x] add representation for comprehensions
     - [x] fix literals parsing
-    - [ ] simplify unary operators
+    - [x] simplify unary operators
     - [ ] harmonize errors
     - [ ] generalize to any string type?
     - [x] differentiate between "name" and "identifier" to avoid `#` in places such as package name
