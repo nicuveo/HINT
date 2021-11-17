@@ -70,7 +70,7 @@ identifierOrKeyword = do
 -- consuming input if the found identifier is a keyword.
 identifier :: Parser Identifier
 identifier = try $ identifierOrKeyword >>= \case
-  Left kw -> fail "FIXME expected identifier, got keyword"
+  Left kw -> fail $ "expected identifier, got keyword " ++ show kw
   Right i -> pure i
 
 -- | Parses an keyword, and skips to the next token on success. Fails without
@@ -79,8 +79,8 @@ keyword :: Keyword -> Parser Keyword
 keyword kw = try $ identifierOrKeyword >>= \case
   Left  k
     | k == kw   -> pure k
-    | otherwise -> fail "FIXME expected keyword kw, got other keyword k"
-  Right i -> fail "FIXME expected keyword kw, got identifier"
+    | otherwise -> fail $ "expected keyword " ++ show kw ++ ", got other keyword " ++ show k
+  Right i -> fail $ "expected keyword " ++ show kw ++ ", got identifier"
 
 -- | Parses an operator, and does NOT skip following space.
 nextOperator :: Parser (Operator, Bool)

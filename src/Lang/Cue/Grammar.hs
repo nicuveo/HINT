@@ -64,7 +64,18 @@ data Keyword
   | KeywordIn
   | KeywordIf
   | KeywordLet
-  deriving (Show, Eq, Ord, Enum, Bounded)
+  deriving (Eq, Ord, Enum, Bounded)
+
+instance Show Keyword where
+  show KeywordPackage = "package"
+  show KeywordImport  = "import"
+  show KeywordNull    = "null"
+  show KeywordTrue    = "true"
+  show KeywordFalse   = "false"
+  show KeywordFor     = "for"
+  show KeywordIn      = "in"
+  show KeywordIf      = "if"
+  show KeywordLet     = "let"
 
 data Operator
   = OperatorRealComma
@@ -102,7 +113,44 @@ data Operator
   | OperatorBracesClose
   | OperatorBracketsOpen
   | OperatorBracketsClose
-  deriving (Show, Eq, Ord, Enum, Bounded)
+  deriving (Eq, Ord, Enum, Bounded)
+
+instance Show Operator where
+  show OperatorRealComma     = "comma"
+  show OperatorNewlineComma  = "newline"
+  show OperatorEOFComma      = "end of input"
+  show OperatorAdd           = "+"
+  show OperatorSub           = "-"
+  show OperatorMul           = "*"
+  show OperatorPow           = "^"
+  show OperatorQuo           = "/"
+  show OperatorArrow         = "<-"
+  show OperatorLAnd          = "&&"
+  show OperatorLOr           = "||"
+  show OperatorAnd           = "&&"
+  show OperatorOr            = "||"
+  show OperatorEqual         = "=="
+  show OperatorNotEqual      = "!="
+  show OperatorMatch         = "=~"
+  show OperatorNotMatch      = "!~"
+  show OperatorLTE           = "<="
+  show OperatorGTE           = ">="
+  show OperatorLT            = "<"
+  show OperatorGT            = ">"
+  show OperatorBind          = "="
+  show OperatorIsA           = "::"
+  show OperatorColon         = ":"
+  show OperatorOption        = "?"
+  show OperatorNot           = "!"
+  show OperatorEllipsis      = "..."
+  show OperatorPeriod        = "."
+  show OperatorBottom        = "_|_"
+  show OperatorParensOpen    = "("
+  show OperatorParensClose   = ")"
+  show OperatorBracesOpen    = "{"
+  show OperatorBracesClose   = "}"
+  show OperatorBracketsOpen  = "["
+  show OperatorBracketsClose = "]"
 
 data Attribute = Attribute
   { attributeName   :: Identifier
