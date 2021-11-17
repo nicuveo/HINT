@@ -63,7 +63,7 @@ instance Printer Token where
     TokenFloat         x -> build i x
 
 instance Printer [Token] where
-  build i = listWith i "" " "
+  build i = withSpaces i
 
 instance Printer Identifier where
   build _ (Identifier t) = fromText t
@@ -120,14 +120,14 @@ instance Printer Operator where
 
 instance Printer Attribute where
   build i (Attribute name tokens) =
-    "@" <> build i name <> "(" <> listWith i "" " " tokens <> ")"
+    "@" <> build i name <> "(" <> withSpaces i tokens <> ")"
 
 instance Printer AttributeToken where
   build i = \case
     AttributeToken    t  -> build i t
-    AttributeParens   ts -> "( " <> listWith i "" " " ts <> ")"
-    AttributeBraces   ts -> "{ " <> listWith i "" " " ts <> "}"
-    AttributeBrackets ts -> "[ " <> listWith i "" " " ts <> "]"
+    AttributeParens   ts -> "( " <> withSpaces i ts <> ")"
+    AttributeBraces   ts -> "{ " <> withSpaces i ts <> "}"
+    AttributeBrackets ts -> "[ " <> withSpaces i ts <> "]"
 
 instance Printer InterpolationElement where
   build i = \case
@@ -140,7 +140,7 @@ instance Printer InterpolationElement where
 
 instance Printer SourceFile where
   build i (SourceFile ident attribs imports decls) =
-    listWith i (fromString $ replicate (2*i) ' ') "\n" $ concat
+    mconcat $ map (<> "\n") $ concat
       [ build i <$> attribs
       , maybeToList $ ident <&> \n -> "package " <> build i n
       , build i <$> imports
@@ -164,15 +164,18 @@ instance Printer Declaration where
     DeclarationAttribute x -> build i x
 
 instance Printer Field where
-  build _ _ = "<field>"
+  build i (Field l e a) = build i l <> ": " <> build i e <> if null a
+    then ""
+    else " " <> withSpaces i a
 
 instance Printer Label where
-  build _ _ = "<label>"
+  build i (Label alias expr) = maybe "" (\a -> build i a <> " = ") alias <> build i expr
 
 instance Printer LabelExpression where
   build i = \case
-    LabelName  opt name -> fromText name <> build i opt
-    LabelAlias alexp    -> "[" <> build i alexp <> "]"
+    LabelIdentifier name opt   -> build i name <> build i opt
+    LabelString     name opt   -> buildString i name <> build i opt
+    LabelConstraint constraint -> "[" <> build i constraint <> "]"
 
 instance Printer Optional where
   build i = \case
@@ -180,7 +183,7 @@ instance Printer Optional where
     Required -> ""
 
 instance Printer Ellipsis where
-  build i e = "..." <> maybe "" (\x -> " " <> build i x) e
+  build i e = "..." <> maybe "" (\x -> build i x) e
 
 instance Printer Embedding where
   build i = \case
@@ -197,7 +200,7 @@ instance Printer AliasedExpression where
 
 instance Printer Comprehension where
   build i (Comprehension clauses decl) =
-    mconcat (intersperse " " $ NE.toList $ build i <$> clauses) <> " " <> blockWith i "{" "}" "" decl
+    mconcat (intersperse " " $ NE.toList $ build i <$> clauses) <> " " <> makeBlock i decl
 
 instance Printer ComprehensionClause where
   build i = \case
@@ -228,7 +231,7 @@ instance Printer Expression where
 
 instance Printer UnaryExpression where
   build i (UnaryExpression ops pe) =
-    listWith i "" " " ops <> build i pe
+    withSpaces i ops <> build i pe
 
 instance Printer PrimaryExpression where
   build i = \case
@@ -236,7 +239,7 @@ instance Printer PrimaryExpression where
     PrimarySelector e s     -> build i e <> " . " <> either (build i) (buildString i) s
     PrimaryIndex    e j     -> build i e <> "[" <> build i j <> "]"
     PrimarySlice    e (l,h) -> build i e <> "[" <> build i l <> ":" <> build i h <> "]"
-    PrimaryCall     e args  -> build i e <> "(" <> listWith i "" ", " args <> ")"
+    PrimaryCall     e args  -> build i e <> "(" <> withCommas i args <> ")"
 
 instance Printer Operand where
   build i = \case
@@ -257,7 +260,7 @@ instance Printer Literal where
     NullLiteral      -> "null"
     BottomLiteral    -> "_|_"
     ListLiteral l    -> build i l
-    StructLiteral ds -> blockWith i "{" "}" "" ds
+    StructLiteral ds -> makeBlock i ds
 
 instance Printer ListLiteral where
   build i = \case
@@ -281,25 +284,27 @@ instance Printer ListLiteral where
 --------------------------------------------------------------------------------
 -- Helpers
 
-blockWith :: Printer a => Int -> Builder -> Builder -> Builder -> [a] -> Builder
-blockWith i open close sep []    = open <> close
-blockWith i open close sep [x]   = open <> build i x <> close
-blockWith i open close sep (x:r) = mconcat
-  [ open
-  , " "
-  , build (i+1) x <> sep <> "\n" <> indent
-  , listWith (i+1) "  " (sep <> "\n" <> indent) r
-  , close
+makeBlock :: Printer a => Int -> [a] -> Builder
+makeBlock i []  = "{}"
+makeBlock i [x] = "{" <> build i x <> "}"
+makeBlock i l   = mconcat
+  [ "{\n"
+  , mconcat $ l <&> \x -> indent <> "  " <> build (i+1) x <> ",\n"
+  , indent
+  , "}"
   ]
   where indent = fromString $ replicate (2*i) ' '
 
-listWith :: Printer a => Int -> Builder -> Builder -> [a] -> Builder
-listWith i p s = mconcat . map (\x -> p <> build i x <> s)
+withCommas :: Printer a => Int -> [a] -> Builder
+withCommas i = mconcat . intersperse ", " . map (build i)
 
-buildString :: Int -> Either Interpolation Text -> Builder
+withSpaces :: Printer a => Int -> [a] -> Builder
+withSpaces i = mconcat . intersperse " " . map (build i)
+
+buildString :: Int -> StringLiteral -> Builder
 buildString i = \case
-  Left  elts -> "'" <> foldMap (build i) elts <> "'"
-  Right strl -> "'" <> encodeText strl <> "'"
+  Left  elts -> "\"" <> foldMap (build i) elts <> "\""
+  Right strl -> "\"" <> encodeText strl <> "\""
 
 encodeText :: Text -> Builder
 encodeText = T.foldl' escapeChar mempty
@@ -316,12 +321,12 @@ encodeText = T.foldl' escapeChar mempty
          | c == '\t' -> "\\t"
          | c == '\v' -> "\\v"
          | c == '\\' -> "\\\\"
-         | c == '\'' -> "\\'"
+         | c == '"'  -> "\\\""
          | isPrint c -> singleton c
          | otherwise ->
            let
              h = hexadecimal (ord c)
              l = length h
-           in if | l <= 2    -> "\\x" <> fromString (replicate (2 - l) '0' <> h)
-                 | l <= 4    -> "\\u" <> fromString (replicate (4 - l) '0' <> h)
-                 | otherwise -> "\\U" <> fromString (replicate (8 - l) '0' <> h)
+           in if l <= 4
+              then "\\u" <> fromString (replicate (4 - l) '0' <> h)
+              else "\\U" <> fromString (replicate (8 - l) '0' <> h)

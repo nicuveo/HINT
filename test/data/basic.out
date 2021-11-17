@@ -1,4 +1,10 @@
 package basic
 import "lib/foo"
 import bar "lib/bar"
-...
+a: 42
+b: {c: {[z = 86]: 64}}
+"d": false
+z = e: {
+  f: "foo",
+  ..._|_,
+}
