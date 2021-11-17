@@ -36,9 +36,9 @@ TODO:
     - [x] debug remaining quickcheck issues
     - [ ] fix missing arbitrary declarations
     - add test cases for known edge cases
-      - [ ] `_|_` being interpreted as `_ | _`
-      - [ ] identifier `#foo` being interpreted as a string literal
-      - [ ] `foo.bar` which can be interpreted either as a selector or as a qualified identifier
+      - [x] `_|_` being interpreted as `_ | _`
+      - [x] identifier `#foo` being interpreted as a string literal
+      - [x] `foo.bar` which can be interpreted either as a selector or as a qualified identifier
       - [ ] `123.foo` being a parse error for floats rather than an invalid selector
     - [ ] find a real file for simple e2e tests
     - [ ] benchmarking?

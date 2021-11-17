@@ -34,12 +34,12 @@ parserUTests = testGroup "Parser"
       testCase n $ testParser sourceFile i o
   , testGroup "number literal" $ numberLitTests <&> \(n, i, o) ->
       testCase n $ testParser numberLiteral i o
+  , testGroup "edge cases" edgeCasesTests
   ]
 
 testParser parser input ast = case runParser (parser <* eof) "<interactive>" input of
   Right result -> result @?= ast
   Left  err    -> assertFailure $ errorBundlePretty err
-
 
 expressionTests =
   [ ( "bounds"
@@ -82,6 +82,16 @@ sourceFileTests =
     )
   ]
 
+edgeCasesTests =
+  [ testCase "bottom is not a disjunction of identifiers" $ testParser expression "_|_" $
+    Unary $ UnaryExpression [] $ PrimaryOperand $ OperandLiteral $ BottomLiteral
+  , testCase "#foo is an identifier and not an invalid string literal" $ testParser expression "#foo" $
+    Unary $ UnaryExpression [] $ PrimaryOperand $ OperandName $ QualifiedIdentifier Nothing "#foo"
+  , testCase "foo.bar is ambiguous but interpreted as a qualified identifier" $ testParser expression "foo.bar" $
+    Unary $ UnaryExpression [] $ PrimaryOperand $ OperandName $ QualifiedIdentifier (Just "foo") "bar"
+  , testCase "(foo).bar is not ambiguous" $ testParser expression "(foo).bar" $
+    Unary $ UnaryExpression [] $ PrimarySelector (PrimaryOperand $ OperandExpression $ Unary $ UnaryExpression [] $ PrimaryOperand $ OperandName $ QualifiedIdentifier Nothing "foo") $ Left "bar"
+  ]
 
 --------------------------------------------------------------------------------
 -- Printer unit tests
