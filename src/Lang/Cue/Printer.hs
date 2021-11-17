@@ -1,17 +1,25 @@
-module Lang.Cue.Printer where
+module Lang.Cue.Printer
+  ( display
+  , displayStrict
+  , buildString
+  ) where
 
-import Data.Functor ((<&>))
-import Data.Maybe (maybeToList, catMaybes)
-import Data.List (intersperse)
-import Data.Text.Lazy.Builder (Builder, fromText, fromString, toLazyText)
-import Data.Text.Lazy (toStrict)
-import qualified Data.Text as T
-import qualified Data.Text.Lazy as TL
+import           Data.Functor           ((<&>))
+import           Data.List              (intersperse)
+import qualified Data.List.NonEmpty     as NE
+import           Data.Maybe             (catMaybes, maybeToList)
+import           Data.Text              (Text)
+import qualified Data.Text              as T
+import           Data.Text.Lazy         (toStrict)
+import qualified Data.Text.Lazy         as TL
+import           Data.Text.Lazy.Builder
+import Data.Char
 
-import Lang.Cue.Parser
+import           Lang.Cue.Grammar
 
 
--- class
+--------------------------------------------------------------------------------
+-- API
 
 class Printer a where
   build :: Int -> a -> Builder
@@ -23,13 +31,11 @@ displayStrict :: Printer a => a -> T.Text
 displayStrict = toStrict . display
 
 
--- base instances
+--------------------------------------------------------------------------------
+-- Base instances
 
 instance Printer Builder where
   build _ = id
-
-instance Printer T.Text where
-  build _ _ = "<escaped text>"
 
 instance Printer Integer where
   build _ = fromString . show
@@ -42,7 +48,8 @@ instance Printer Bool where
   build _ True  = "true"
 
 
--- tokens
+--------------------------------------------------------------------------------
+-- Tokens
 
 instance Printer Token where
   build i = \case
@@ -50,8 +57,8 @@ instance Printer Token where
     TokenKeyword       x -> build i x
     TokenOperator      x -> build i x
     TokenAttribute     x -> build i x
-    TokenInterpolation _ -> "<interpolation>"
-    TokenString        x -> "\"" <> build i x <> "\""
+    TokenInterpolation x -> buildString i $ Left  x
+    TokenString        x -> buildString i $ Right x
     TokenInteger       x -> build i x
     TokenFloat         x -> build i x
 
@@ -110,36 +117,41 @@ instance Printer Operator where
 
 instance Printer Attribute where
   build i (Attribute name tokens) =
-    "@" <> build i name <> "(" <> listWith i " " tokens <> ")"
+    "@" <> build i name <> "(" <> listWith i "" " " tokens <> ")"
 
 instance Printer AttributeToken where
   build i = \case
     AttributeToken    t  -> build i t
-    AttributeParens   ts -> "(" <> listWith i " " ts <> ")"
-    AttributeBraces   ts -> "{" <> listWith i " " ts <> "}"
-    AttributeBrackets ts -> "[" <> listWith i " " ts <> "]"
+    AttributeParens   ts -> "( " <> listWith i "" " " ts <> ")"
+    AttributeBraces   ts -> "{ " <> listWith i "" " " ts <> "}"
+    AttributeBrackets ts -> "[ " <> listWith i "" " " ts <> "]"
+
+instance Printer InterpolationElement where
+  build i = \case
+    InterpolationString     t -> encodeText t
+    InterpolationExpression e -> "\\(" <> build i e <> ")"
 
 
--- ast
+--------------------------------------------------------------------------------
+-- AST
 
 instance Printer SourceFile where
   build i (SourceFile ident attribs imports decls) =
-    listWith i "\n" $ concat
-      [ maybeToList $ ident <&> \n -> "package " <> build i n
-      , build i <$> attribs
+    listWith i (fromString $ replicate (2*i) ' ') "\n" $ concat
+      [ build i <$> attribs
+      , maybeToList $ ident <&> \n -> "package " <> build i n
       , build i <$> imports
       , build i <$> decls
       , [""] -- forces a newline at the end of the file
       ]
 
 instance Printer Import where
-  build i (Import name path ident) =
-    mconcat $ intersperse " " $ catMaybes
-      [ Just "import"
-      , build i <$> name
-      , Just $ "\"" <> fromText path <> "\""
-      , build i <$> ident
-      ]
+  build i (Import name path ident) = "import "
+    <> maybe "" (\x -> build i x <> " ") name
+    <> "\""
+    <> fromText path
+    <> maybe "" (\x -> ":" <> build i x) ident
+    <> "\""
 
 instance Printer Declaration where
   build i = \case
@@ -157,7 +169,7 @@ instance Printer Label where
 
 instance Printer LabelExpression where
   build i = \case
-    LabelName  opt name -> build i name <> build i opt
+    LabelName  opt name -> fromText name <> build i opt
     LabelAlias alexp    -> "[" <> build i alexp <> "]"
 
 instance Printer Optional where
@@ -170,60 +182,66 @@ instance Printer Ellipsis where
 
 instance Printer Embedding where
   build i = \case
-    EmbeddedComprehension _ -> "<comprehension>"
+    EmbeddedComprehension c -> build i c
     EmbeddedExpression    a -> build i a
 
 instance Printer LetClause where
   build i (LetClause ident expr) =
-    mconcat $ intersperse " "
-      [ "let"
-      , build i ident
-      , "="
-      , build i expr
-      ]
+    "let " <> build i ident <> " = " <> build i expr
 
 instance Printer AliasedExpression where
   build i (AliasedExpression alias expr) =
     maybe "" (\a -> build i a <> " = ") alias <> build i expr
 
+instance Printer Comprehension where
+  build i (Comprehension clauses decl) =
+    mconcat (intersperse " " $ NE.toList $ build i <$> clauses) <> " " <> blockWith i "{" "}" "" decl
+
+instance Printer ComprehensionClause where
+  build i = \case
+    ComprehensionFor        j   e -> "for " <> build i j <> " in " <> build i e
+    ComprehensionIndexedFor j k e -> "for " <> build i j <> ", " <> build i k <> " in " <> build i e
+    ComprehensionIf             e -> "if "  <> build i e
+    ComprehensionLet        j   e -> "let " <> build i j <> " = " <> build i e
+
 instance Printer Expression where
   build i = \case
     Unary          u       -> build i u
-    Multiplication lhs rhs -> "(" <> build i lhs <> "*"  <> build i rhs <> ")"
-    Division       lhs rhs -> "(" <> build i lhs <> "/"  <> build i rhs <> ")"
-    Addition       lhs rhs -> "(" <> build i lhs <> "+"  <> build i rhs <> ")"
-    Subtraction    lhs rhs -> "(" <> build i lhs <> "-"  <> build i rhs <> ")"
-    Equal          lhs rhs -> "(" <> build i lhs <> "==" <> build i rhs <> ")"
-    NotEqual       lhs rhs -> "(" <> build i lhs <> "!=" <> build i rhs <> ")"
-    Match          lhs rhs -> "(" <> build i lhs <> "=~" <> build i rhs <> ")"
-    NotMatch       lhs rhs -> "(" <> build i lhs <> "!~" <> build i rhs <> ")"
-    LessThan       lhs rhs -> "(" <> build i lhs <> "<"  <> build i rhs <> ")"
-    LessOrEqual    lhs rhs -> "(" <> build i lhs <> "<=" <> build i rhs <> ")"
-    GreaterThan    lhs rhs -> "(" <> build i lhs <> ">"  <> build i rhs <> ")"
-    GreaterOrEqual lhs rhs -> "(" <> build i lhs <> ">=" <> build i rhs <> ")"
-    LogicalAnd     lhs rhs -> "(" <> build i lhs <> "&&" <> build i rhs <> ")"
-    LogicalOr      lhs rhs -> "(" <> build i lhs <> "||" <> build i rhs <> ")"
-    Unification    lhs rhs -> "(" <> build i lhs <> "&"  <> build i rhs <> ")"
-    Disjunction    lhs rhs -> "(" <> build i lhs <> "|"  <> build i rhs <> ")"
+    Multiplication lhs rhs -> build i lhs <> " * "  <> build i rhs
+    Division       lhs rhs -> build i lhs <> " / "  <> build i rhs
+    Addition       lhs rhs -> build i lhs <> " + "  <> build i rhs
+    Subtraction    lhs rhs -> build i lhs <> " - "  <> build i rhs
+    Equal          lhs rhs -> build i lhs <> " == " <> build i rhs
+    NotEqual       lhs rhs -> build i lhs <> " != " <> build i rhs
+    Match          lhs rhs -> build i lhs <> " =~ " <> build i rhs
+    NotMatch       lhs rhs -> build i lhs <> " !~ " <> build i rhs
+    LessThan       lhs rhs -> build i lhs <> " < "  <> build i rhs
+    LessOrEqual    lhs rhs -> build i lhs <> " <= " <> build i rhs
+    GreaterThan    lhs rhs -> build i lhs <> " > "  <> build i rhs
+    GreaterOrEqual lhs rhs -> build i lhs <> " >= " <> build i rhs
+    LogicalAnd     lhs rhs -> build i lhs <> " && " <> build i rhs
+    LogicalOr      lhs rhs -> build i lhs <> " || " <> build i rhs
+    Unification    lhs rhs -> build i lhs <> " & "  <> build i rhs
+    Disjunction    lhs rhs -> build i lhs <> " | "  <> build i rhs
 
 instance Printer UnaryExpression where
   build i = \case
-    UnaryExpression o u -> build i o <> build i u
+    UnaryExpression o u -> build i o <> " " <> build i u
     PrimaryExpression p -> build i p
 
 instance Printer PrimaryExpression where
   build i = \case
     PrimaryOperand  o       -> build i o
-    PrimarySelector e s     -> build i e <> "." <> build i s
+    PrimarySelector e s     -> build i e <> " . " <> either (build i) (buildString i) s
     PrimaryIndex    e j     -> build i e <> "[" <> build i j <> "]"
     PrimarySlice    e (l,h) -> build i e <> "[" <> build i l <> ":" <> build i h <> "]"
-    PrimaryCall     e args  -> build i e <> "(" <> listWith i ", " args <> ")"
+    PrimaryCall     e args  -> build i e <> "(" <> listWith i "" ", " args <> ")"
 
 instance Printer Operand where
   build i = \case
     OperandLiteral    l -> build i l
     OperandName       n -> build i n
-    OperandExpression e -> build i e
+    OperandExpression e -> "(" <> build i e <> ")"
 
 instance Printer QualifiedIdentifier where
   build i (QualifiedIdentifier pn ident) =
@@ -233,7 +251,7 @@ instance Printer Literal where
   build i = \case
     IntegerLiteral n -> build i n
     FloatLiteral d   -> build i d
-    StringLiteral t  -> "\"" <> build i t <> "\""
+    StringLiteral s  -> buildString i s
     BoolLiteral b    -> build i b
     NullLiteral      -> "null"
     BottomLiteral    -> "_|_"
@@ -242,23 +260,67 @@ instance Printer Literal where
 
 instance Printer ListLiteral where
   build i = \case
-    ClosedList ems      -> blockWith i "[" "]" "," ems
-    OpenList   ems ells -> blockWith i "[" (build i ells <> "]") "," ems
+    ClosedList []    -> "[]"
+    ClosedList [x]   -> "[" <> build i x <> "]"
+    ClosedList (x:r) -> mconcat
+      [ "[ " <> build (i+1) x <> ",\n" <> indent
+      , mconcat $ r <&> \x -> "  " <> build (i+1) x <> ",\n" <> indent
+      , "]"
+      ]
+    OpenList []    ell -> "[" <> build i ell <> "]"
+    OpenList (x:r) ell -> mconcat
+      [ "[ " <> build (i+1) x <> ",\n" <> indent
+      , mconcat $ r <&> \x -> "  " <> build (i+1) x <> ",\n" <> indent
+      , "  " <> build (i+1) ell <> ",\n" <> indent
+      , "]"
+      ]
+    where
+      indent = fromString $ replicate (2*i) ' '
 
-
--- helpers
+--------------------------------------------------------------------------------
+-- Helpers
 
 blockWith :: Printer a => Int -> Builder -> Builder -> Builder -> [a] -> Builder
-blockWith i open close sep elems = mconcat
+blockWith i open close sep []    = open <> close
+blockWith i open close sep [x]   = open <> build i x <> close
+blockWith i open close sep (x:r) = mconcat
   [ open
-  , "\n  "
-  , indent
-  , listWith (i+1) (sep <> "\n  " <> indent) elems
-  , "\n"
-  , indent
+  , " "
+  , build (i+1) x <> sep <> "\n" <> indent
+  , listWith (i+1) "  " (sep <> "\n" <> indent) r
   , close
   ]
   where indent = fromString $ replicate (2*i) ' '
 
-listWith :: Printer a => Int -> Builder -> [a] -> Builder
-listWith i s = mconcat . intersperse s . map (build i)
+listWith :: Printer a => Int -> Builder -> Builder -> [a] -> Builder
+listWith i p s = mconcat . map (\x -> p <> build i x <> s)
+
+buildString :: Int -> Either Interpolation Text -> Builder
+buildString i = \case
+  Left  elts -> "'" <> foldMap (build i) elts <> "'"
+  Right strl -> "'" <> encodeText strl <> "'"
+
+encodeText :: Text -> Builder
+encodeText = T.foldl' escapeChar mempty
+  where
+    hexadecimal n
+      | n < 16    = [intToDigit n]
+      | otherwise = hexadecimal (n `quot` 16) ++ [intToDigit (n `rem` 16)]
+    escapeChar b c = b <>
+      if | c == '\a' -> "\\a"
+         | c == '\b' -> "\\b"
+         | c == '\f' -> "\\f"
+         | c == '\n' -> "\\n"
+         | c == '\r' -> "\\r"
+         | c == '\t' -> "\\t"
+         | c == '\v' -> "\\v"
+         | c == '\\' -> "\\\\"
+         | c == '\'' -> "\\'"
+         | isPrint c -> singleton c
+         | otherwise ->
+           let
+             h = hexadecimal (ord c)
+             l = length h
+           in if | l <= 2    -> "\\x" <> fromString (replicate (2 - l) '0' <> h)
+                 | l <= 4    -> "\\u" <> fromString (replicate (4 - l) '0' <> h)
+                 | otherwise -> "\\U" <> fromString (replicate (8 - l) '0' <> h)

@@ -40,7 +40,7 @@ library:
     - -fno-warn-unused-do-bind
 
 tests:
-  unit-tests:
+  tests:
     source-dirs:
       - src
       - test
@@ -50,21 +50,4 @@ tests:
       - tasty-quickcheck
     ghc-options:
       - -fno-warn-missing-signatures
-    main: UnitTests.hs
-    other-modules:
-      - Lang.Cue.Parser
-  e2e-tests:
-    source-dirs:
-      - src
-      - test
-    dependencies:
-      - directory
-      - tasty
-      - tasty-hunit
-      - tasty-quickcheck
-    ghc-options:
-      - -fno-warn-missing-signatures
-    main: E2ETests.hs
-    other-modules:
-      - Lang.Cue.Parser
-      - Lang.Cue.Printer
+    main: Tests.hs

@@ -1,20 +1,33 @@
+import           Control.Monad.IO.Class
 import           Data.Functor
 import           Data.List.NonEmpty
+import qualified Data.Text              as T
+import qualified Data.Text.IO           as T
 import           Test.Tasty
 import           Test.Tasty.HUnit
-import           Text.Megaparsec    (errorBundlePretty, runParser, eof)
+import           Test.Tasty.QuickCheck
+import           Text.Megaparsec        (eof, errorBundlePretty, runParser)
 
+import           Lang.Cue.Grammar
 import           Lang.Cue.Parser
+import           Lang.Cue.Printer
 
+import           Arbitrary
 
-main = defaultMain allTests
-
-allTests = testGroup "Tests" [runParserTests]
 
 --------------------------------------------------------------------------------
--- Parser
+-- Main
 
-runParserTests = testGroup "Parser"
+main = defaultMain $ testGroup "Tests"
+  [ testGroup "Unit tests" [parserUTests, printerUTests]
+  , testGroup "E2E tests"  [parserETests]
+  ]
+
+
+--------------------------------------------------------------------------------
+-- Parser unit tests
+
+parserUTests = testGroup "Parser"
   [ testGroup "expression" $ expressionTests <&> \(n, i, o) ->
       testCase n $ testParser expression i o
   , testGroup "sourceFile" $ sourceFileTests <&> \(n, i, o) ->
@@ -30,8 +43,8 @@ testParser parser input ast = case runParser (parser <* eof) "<interactive>" inp
 
 expressionTests =
   [ ( "bounds"
-    , "2 & >=2 & <=5 | 2.5 & >=1 & <=5 | 2 & >=1.0 & <3.0 | 2 & >1 & <3.0 | 2.5 & int & >1 & <5 | 2.5 & float & >1 & <5 | int & 2 & >1.0 & <3.0 | 2.5 & >=(int & 1) & <5 | >=0 & <=7 & >=3 & <=10 | !=null & 1 | >=5 & <=5"
-    , Unary $ PrimaryExpression $ PrimaryOperand (OperandName (QualifiedIdentifier {qiPackageName = Nothing, qiIdentifier = Identifier "foo"}))
+    , ">= 5.0"
+    , Unary (UnaryExpression OperatorGTE (PrimaryExpression (PrimaryOperand (OperandLiteral (FloatLiteral 5)))))
     )
   ]
 
@@ -63,10 +76,10 @@ sourceFileTests =
     , "@z(id = let)"
     , SourceFile Nothing [Attribute "z" $ AttributeToken <$> [TokenIdentifier "id", TokenOperator OperatorBind, TokenKeyword KeywordLet]] [] []
     )
-  -- , ( "import statement"
-  --   , "import \"blaaah\""
-  --   , SourceFile Nothing [] [Import Nothing "blaah" Nothing] []
-  --   )
+  , ( "import statement"
+    , "import \"blaaah\""
+    , SourceFile Nothing [] [Import Nothing "blaaah" Nothing] []
+    )
   , ( "all combined"
     , "@package(attr=fixme),package floof\na: b: foo\n"
     , SourceFile
@@ -79,3 +92,41 @@ sourceFileTests =
       }
     )
   ]
+
+
+--------------------------------------------------------------------------------
+-- Printer unit tests
+
+printerUTests = testGroup "Parser"
+  [ testRoundTrips
+  ]
+
+testRoundTrips = testGroup "round trip"
+  [ roundTrip "token"       token
+  , roundTrip "literal"     literal
+  , roundTrip "expression"  expression
+  , roundTrip "source file" sourceFile
+  ]
+
+roundTrip n p = testProperty n \x ->
+  counterexample (show $ displayStrict x) $
+    runParser (p <* eof) "" (displayStrict x) == Right x
+
+
+--------------------------------------------------------------------------------
+-- Parser E2E tests
+
+parserETests = testGroup "Parser"
+  [ testCase "basic" $ checkFile "basic"
+  ]
+
+checkFile name = do
+  let
+    fileNameIn  = "test/data/" <> name <> ".in"
+    fileNameOut = "test/data/" <> name <> ".out"
+  inFile  <- liftIO $ T.readFile fileNameIn
+  outFile <- liftIO $ T.readFile fileNameOut
+  ast <- case runParser sourceFile fileNameIn inFile of
+    Right result -> pure result
+    Left  err    -> assertFailure $ errorBundlePretty err
+  outFile @=? displayStrict ast

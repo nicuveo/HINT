@@ -1,0 +1,6 @@
+package basic
+
+import     "lib/foo"
+import bar "lib/bar"
+
+a: b: 42

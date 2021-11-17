@@ -1,115 +1,24 @@
 module Lang.Cue.Parser where
 
 import           Control.Monad
+import           Control.Monad.Loops        (unfoldM)
 import qualified Control.Monad.State        as MS
+import           Data.Char
 import           Data.Functor               ((<&>))
 import qualified Data.List                  as L
-import           Data.List.NonEmpty         (NonEmpty)
+import           Data.List.NonEmpty         (NonEmpty (..))
 import qualified Data.List.NonEmpty         as NE
 import           Data.Maybe
 import           Data.String
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
 import           Data.Void
+import           Debug.Trace                (traceM)
 import           Text.Megaparsec            hiding (Label, Token, token)
 import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
-import Data.Char
-import Debug.Trace (traceM)
-import Control.Monad.Loops (unfoldM)
 
-
---------------------------------------------------------------------------------
--- Identifier
-
-newtype Identifier = Identifier Text
-  deriving (Show, Eq, Ord)
-
-instance IsString Identifier where
-  fromString = Identifier . fromString
-
-
---------------------------------------------------------------------------------
--- Tokens
-
-data Token
-  = TokenIdentifier    Identifier
-  | TokenKeyword       Keyword
-  | TokenOperator      Operator
-  | TokenAttribute     Attribute
-  | TokenInterpolation [InterpolationElement]
-  | TokenString        Text
-  | TokenInteger       Integer
-  | TokenFloat         Double
-  deriving (Show, Eq)
-
-data InterpolationElement
-  = InterpolationString     Text
-  | InterpolationExpression Expression
-  deriving (Show, Eq)
-
-data Keyword
-  = KeywordPackage
-  | KeywordImport
-  | KeywordNull
-  | KeywordTrue
-  | KeywordFalse
-  | KeywordFor
-  | KeywordIn
-  | KeywordIf
-  | KeywordLet
-  deriving (Show, Eq, Ord, Enum, Bounded)
-
-data Operator
-  = OperatorRealComma
-  | OperatorNewlineComma
-  | OperatorEOFComma
-  | OperatorAdd
-  | OperatorSub
-  | OperatorMul
-  | OperatorPow
-  | OperatorQuo
-  | OperatorArrow
-  | OperatorLAnd
-  | OperatorLOr
-  | OperatorAnd
-  | OperatorOr
-  | OperatorEqual
-  | OperatorNotEqual
-  | OperatorMatch
-  | OperatorNotMatch
-  | OperatorLTE
-  | OperatorGTE
-  | OperatorLT
-  | OperatorGT
-  | OperatorBind
-  | OperatorColon
-  | OperatorIsA
-  | OperatorOption
-  | OperatorNot
-  | OperatorParensOpen
-  | OperatorParensClose
-  | OperatorBracesOpen
-  | OperatorBracesClose
-  | OperatorBracketsOpen
-  | OperatorBracketsClose
-  | OperatorEllipsis
-  | OperatorPeriod
-  | OperatorBottom
-  deriving (Show, Eq, Ord, Enum, Bounded)
-
-data Attribute = Attribute
-  { attributeName   :: Identifier
-  , attributeTokens :: [AttributeToken]
-  }
-  deriving (Show, Eq)
-
-data AttributeToken
-  = AttributeToken    Token
-  | AttributeParens   [AttributeToken]
-  | AttributeBraces   [AttributeToken]
-  | AttributeBrackets [AttributeToken]
-  deriving (Show, Eq)
+import           Lang.Cue.Grammar
 
 
 --------------------------------------------------------------------------------
@@ -133,9 +42,11 @@ skipToNextToken autoComma = do
 identifierText :: Parser Text
 identifierText = try $ do
   prefix <- optional $ string "#" <|> string "_#"
-  firstC <- letterChar
-  rest   <- many $ letterChar <|> digitChar
+  firstC <- letter
+  rest   <- many $ letter <|> digitChar
   pure $ fromMaybe mempty prefix <> T.cons firstC (T.pack rest)
+  where
+    letter = char '_' <|> letterChar
 
 -- | Parses an identifier, and identify whether it matches a keyword. Skips to
 -- the next token.
@@ -231,151 +142,25 @@ attribute = do
       else do
         at <- case t of
           TokenOperator OperatorParensOpen    -> AttributeParens   <$> attrTokens OperatorParensClose
-          TokenOperator OperatorBracesOpen    -> AttributeBraces   <$> attrTokens OperatorParensClose
-          TokenOperator OperatorBracketsOpen  -> AttributeBrackets <$> attrTokens OperatorParensClose
+          TokenOperator OperatorBracesOpen    -> AttributeBraces   <$> attrTokens OperatorBracesClose
+          TokenOperator OperatorBracketsOpen  -> AttributeBrackets <$> attrTokens OperatorBracketsClose
           TokenOperator OperatorParensClose   -> fail "unmatched closing"
           TokenOperator OperatorBracesClose   -> fail "unmatched closing"
           TokenOperator OperatorBracketsClose -> fail "unmatched closing"
           TokenOperator OperatorEOFComma      -> fail "found EOF while parsing attribute tokens"
-          TokenInterpolation _                -> fail "not supported in attributes"
+          TokenInterpolation _                -> fail "interpolations are not supported in attributes"
           _                                   -> pure $ AttributeToken t
         (at:) <$> attrTokens closing
 
 token :: Parser Token
 token = label "token" $ choice
-  [ either TokenKeyword TokenIdentifier <$> identifierOrKeyword
-  , TokenOperator <$> operators [minBound..maxBound]
+  [ TokenOperator <$> operators [minBound..maxBound]
   , TokenAttribute <$> attribute
-  , either TokenInterpolation TokenString <$> stringOrInterpolationLiteral
   , either TokenFloat TokenInteger <$> numberLiteral
+  , either TokenKeyword TokenIdentifier <$> identifierOrKeyword
+  , either TokenInterpolation TokenString <$> stringLiteral
+  , fail "did not find a valid token"
   ]
-
-
---------------------------------------------------------------------------------
--- AST
-
-data SourceFile = SourceFile
-  { moduleName         :: Maybe Identifier
-  , moduleAttributes   :: [Attribute]
-  , moduleImports      :: [Import]
-  , moduleDeclarations :: [Declaration]
-  } deriving (Show, Eq)
-
-data Import = Import
-  { importName  :: Maybe Identifier
-  , importPath  :: Text
-  , importIdent :: Maybe Identifier
-  } deriving (Show, Eq)
-
-data Declaration
-  = DeclarationField     Field
-  | DeclarationEllipsis  Ellipsis
-  | DeclarationEmbedding Embedding
-  | DeclarationLetClause LetClause
-  | DeclarationAttribute Attribute
-  deriving (Show, Eq)
-
-data Field = Field
-  { fieldLabels     :: NonEmpty Label
-  , fieldExpression :: AliasedExpression
-  , fieldAttributes :: [Attribute]
-  } deriving (Show, Eq)
-
-data Label = Label
-  { labelIdentifier :: Maybe Identifier
-  , labelExpression :: LabelExpression
-  } deriving (Show, Eq)
-
-data LabelExpression
-  = LabelName  Optional LabelName
-  | LabelAlias AliasedExpression
-  deriving (Show, Eq)
-
-data Optional
-  = Optional
-  | Required
-  deriving (Show, Eq)
-
-type LabelName = Text
-
-type Ellipsis = Maybe Expression
-
-data Embedding
-  = EmbeddedComprehension Comprehension
-  | EmbeddedExpression    AliasedExpression
-  deriving (Show, Eq)
-
-data LetClause = LetClause
-  { letName       :: Identifier
-  , letExpression :: Expression
-  } deriving (Show, Eq)
-
-data AliasedExpression = AliasedExpression
-  { aeAlias      :: Maybe Identifier
-  , aeExpression :: Expression
-  } deriving (Show, Eq)
-
-type Comprehension = ()
-
-data Expression
-  = Unary          UnaryExpression
-  | Multiplication Expression Expression
-  | Division       Expression Expression
-  | Addition       Expression Expression
-  | Subtraction    Expression Expression
-  | Equal          Expression Expression
-  | NotEqual       Expression Expression
-  | Match          Expression Expression
-  | NotMatch       Expression Expression
-  | LessThan       Expression Expression
-  | LessOrEqual    Expression Expression
-  | GreaterThan    Expression Expression
-  | GreaterOrEqual Expression Expression
-  | LogicalAnd     Expression Expression
-  | LogicalOr      Expression Expression
-  | Unification    Expression Expression
-  | Disjunction    Expression Expression
-  deriving (Show, Eq)
-
-data UnaryExpression
-  = UnaryExpression Operator UnaryExpression
-  | PrimaryExpression PrimaryExpression
-  deriving (Show, Eq)
-
-data PrimaryExpression
-  = PrimaryOperand  Operand
-  | PrimarySelector PrimaryExpression Text
-  | PrimaryIndex    PrimaryExpression Expression
-  | PrimarySlice    PrimaryExpression (Expression, Expression)
-  | PrimaryCall     PrimaryExpression [Expression]
-  deriving (Show, Eq)
-
-data Operand
-  = OperandLiteral    Literal
-  | OperandName       QualifiedIdentifier
-  | OperandExpression Expression
-  deriving (Show, Eq)
-
-data QualifiedIdentifier = QualifiedIdentifier
-  { qiPackageName :: Maybe Identifier
-  , qiIdentifier  :: Identifier
-  } deriving (Show, Eq)
-
-data Literal
-  = IntegerLiteral Integer
-  | FloatLiteral Double
-  | StringLiteral Text
-  | BoolLiteral Bool
-  | NullLiteral
-  | BottomLiteral
-  | ListLiteral ListLiteral
-  | StructLiteral [Declaration]
-  deriving (Show, Eq)
-
-data ListLiteral
-   = ClosedList [Embedding]
-   | OpenList   [Embedding] Ellipsis
-  deriving (Show, Eq)
 
 
 --------------------------------------------------------------------------------
@@ -437,17 +222,21 @@ importSpec = do
   (path, ident) <- impPath
   pure $ Import name path ident
   where
+    illegal = "!\"#$%&'()*,:;<=>?[]^{|}\xFFFD" :: String
+    isValid c = isPrint c && not (isSpace c) && notElem c illegal
     impPath = do
-      path <- stringLiteral
-      pure (path, fail "NOT IMPLEMENTED: importSpec")
-      -- ensure validity
-      -- char '"'
-      -- unicodeValue `manyTill_` end
-      -- where
-      --   end = choice
-      --     [ Nothing <$ char '"'
-      --     , Just <$> try (char ':' *> identifier <* char '"')
-      --     ] <* L.space space1 comment empty
+      path <- simpleStringLiteral 0 >>= \case
+        Left  _ -> fail "interpolations not allowed in import paths"
+        Right t -> pure t
+      let
+        (filePath, suffix) = case T.breakOnEnd ":" path of
+          (part1, part2)
+            | T.null part1 -> (part2, Nothing)
+            | otherwise    -> (T.dropEnd 1 part1, Just part2)
+      unless (T.all isValid filePath) $
+        fail $ "import path contains invalid characters"
+      alias <- traverse mkIdentifier suffix
+      pure (filePath, alias)
 
 
 --------------------------------------------------------------------------------
@@ -458,11 +247,12 @@ block = many $ declaration <* comma
 
 declaration :: Parser Declaration
 declaration = choice
-  [ DeclarationField     <$> field
-  , DeclarationEllipsis  <$> ellipsis
+  [ DeclarationEllipsis  <$> ellipsis
   , DeclarationEmbedding <$> embedding
   , DeclarationLetClause <$> letClause
   , DeclarationAttribute <$> attribute
+  , DeclarationField     <$> field
+  , fail "did not find a valid declaration"
   ]
 
 field :: Parser Field
@@ -505,8 +295,9 @@ embedding = choice
 
 letClause :: Parser LetClause
 letClause = do
+  keyword KeywordLet
   n <- identifier
-  operator OperatorColon
+  operator OperatorBind
   e <- expression
   pure $ LetClause n e
 
@@ -520,13 +311,10 @@ expression = binaryOp binaryOperators
     binaryOp [] = Unary <$> unaryExpr
     binaryOp (ops:rest) = do
       lhs <- binaryOp rest
-      opc <- optional $ choice $ ops <&> \(op, constructor) ->
-        try $ constructor <$ operator op
-      case opc of
-        Nothing -> pure lhs
-        Just c  -> do
-          rhs <- binaryOp rest
-          pure $ c lhs rhs
+      opc <- many $ choice $ ops <&> \(op, constructor) -> do
+        rhs <- operator op *> binaryOp rest
+        pure (constructor, rhs)
+      pure $ foldl (\l (o, r) -> o l r) lhs opc
     binaryOperators =
       [ -- precedence 1
         [ (OperatorOr, Disjunction)
@@ -545,10 +333,10 @@ expression = binaryOp binaryOperators
         , (OperatorNotEqual, NotEqual)
         , (OperatorMatch,    Match)
         , (OperatorNotMatch, NotMatch)
-        , (OperatorLT,       LessThan)
         , (OperatorLTE,      LessOrEqual)
-        , (OperatorGT,       GreaterThan)
+        , (OperatorLT,       LessThan)
         , (OperatorGTE,      GreaterOrEqual)
+        , (OperatorGT,       GreaterThan)
         ]
       , -- precedence 6
         [ (OperatorAdd, Addition)
@@ -577,14 +365,14 @@ unaryExpr = choice [withOp, PrimaryExpression <$> primaryExpr]
       [ OperatorAdd
       , OperatorSub
       , OperatorMul
-      , OperatorNot
       , OperatorNotEqual
-      , OperatorMatch
       , OperatorNotMatch
-      , OperatorLT
+      , OperatorNot
+      , OperatorMatch
       , OperatorLTE
-      , OperatorGT
+      , OperatorLT
       , OperatorGTE
+      , OperatorGT
       ]
 
 primaryExpr :: Parser PrimaryExpression
@@ -598,31 +386,56 @@ primaryExpr = do
       , indexOrSlice pexp
       ]
     call pexp = do
-      args <- parens $ commaList expression
-      suffixes $ PrimaryCall pexp args
+      operator OperatorParensOpen
+      res <- optional (operator OperatorParensClose) >>= \case
+        Just _  -> pure $ PrimaryCall pexp []
+        Nothing -> do
+          h <- expression
+          t <- (explicitComma *> expression) `manyTill`
+            try (optional explicitComma *> operator OperatorParensClose)
+          pure $ PrimaryCall pexp (h:t)
+      suffixes res
     selector pexp = do
       operator OperatorPeriod
-      sel <- fail "FIXME" {-identifier-} <|> fail "FIXME" {-simpleStringLit-}
+      sel <- choice
+        [ Left <$> identifier
+        , Right <$> simpleStringLiteral 0
+        ]
       suffixes $ PrimarySelector pexp sel
-    indexOrSlice pexp = do
-      low <- expression
-      sep <- optional $ operator OperatorColon
-      suffixes =<< case sep of
-        Nothing ->
-          pure $ PrimaryIndex pexp low
-        Just _  -> do
-          high <- expression
-          pure $ PrimarySlice pexp (low, high)
+    indexOrSlice pexp =
+      suffixes =<< brackets do
+        low <- expression
+        sep <- optional $ operator OperatorColon
+        case sep of
+          Nothing ->
+            pure $ PrimaryIndex pexp low
+          Just _  -> do
+            high <- expression
+            pure $ PrimarySlice pexp (low, high)
 
+-- | Parses a primary operand.
+--
+-- The order of operations here is tricky, because of some conflicting syntax:
+--   - @_|_@ can parse as either the bottom literal, or as the disjunction of
+--     the identifiers @_@ and @_@
+--   - # can be the start of an identifier OR of a string literal
+--
+-- We `try` the case of the identifier first, to avoid backtracking all the way
+-- if something is wrong within a string literal, as it might itself contain an
+-- expression due to interpolation, and we deal with bottom before anything
+-- else.
 operand :: Parser Operand
 operand = choice
-  [ OperandName       <$> qualifiedIdentifier
+  [ bottom
   , OperandExpression <$> parens expression
+  , OperandName       <$> qualifiedIdentifier
   , OperandLiteral    <$> literal
   ]
+  where
+    bottom = OperandLiteral BottomLiteral <$ operator OperatorBottom
 
 qualifiedIdentifier :: Parser QualifiedIdentifier
-qualifiedIdentifier = do
+qualifiedIdentifier = try $ do
   id1 <- identifier
   sep <- optional $ operator OperatorPeriod
   case sep of
@@ -636,31 +449,36 @@ qualifiedIdentifier = do
 --------------------------------------------------------------------------------
 -- Comprehension
 
-comprehension :: Parser ()
-comprehension = do
-  clauses
-  structLiteral
-  pure ()
+comprehension :: Parser Comprehension
+comprehension = Comprehension
+  <$> clauses
+  <*> structLiteral
 
-clauses = do
-  startClause
-  some $ comma *> clause
+clauses :: Parser (NonEmpty ComprehensionClause)
+clauses = (:|)
+  <$> startClause
+  <*> many (optional comma *> clause)
   where
+    clause = startClause <|> compLetClause
     startClause = forClause <|> guardClause
-    clause = startClause <|> void letClause
+    compLetClause = do
+      LetClause ident expr <- letClause
+      pure $ ComprehensionLet ident expr
 
+forClause :: Parser ComprehensionClause
 forClause = do
   keyword KeywordFor
-  low  <- identifier
-  high <- optional $ comma *> identifier
+  ident1 <- identifier
+  ident2 <- optional $ comma *> identifier
   keyword KeywordIn
   expr <- expression
-  pure ()
+  pure $ case ident2 of
+    Just i  -> ComprehensionIndexedFor ident1 i expr
+    Nothing -> ComprehensionFor        ident1   expr
 
 guardClause = do
   keyword KeywordIf
-  expr <- expression
-  pure ()
+  ComprehensionIf <$> expression
 
 
 --------------------------------------------------------------------------------
@@ -668,8 +486,7 @@ guardClause = do
 
 literal :: Parser Literal
 literal = choice
-  [ IntegerLiteral    <$> integerLiteral
-  , FloatLiteral      <$> floatLiteral
+  [ either FloatLiteral IntegerLiteral <$> numberLiteral
   , StringLiteral     <$> stringLiteral
   , BoolLiteral True  <$  keyword  KeywordTrue
   , BoolLiteral False <$  keyword  KeywordFalse
@@ -677,6 +494,7 @@ literal = choice
   , BottomLiteral     <$  operator OperatorBottom
   , StructLiteral     <$> structLiteral
   , ListLiteral       <$> listLiteral
+  , fail "expecting a literal"
   ]
 
 -- | Parses a number token, and skips subsequent space.
@@ -745,30 +563,20 @@ numberLiteral = do
         'T' -> i**4
         'P' -> i**5
 
-integerLiteral :: Parser Integer
-integerLiteral = try numberLiteral >>= \case
-  Left  _ -> fail "expected integer found float"
-  Right n -> pure n
-
-floatLiteral :: Parser Double
-floatLiteral = try numberLiteral >>= \case
-  Right _ -> fail "expected float found integer"
-  Left  f -> pure f
-
-stringOrInterpolationLiteral :: Parser (Either [InterpolationElement] Text)
-stringOrInterpolationLiteral = go 0
-  where
-    go hashCount = do
-      let
-        closingHashesParser =
-          count hashCount (char '#') <|> fail "the number of closing # must match the number in the opening"
-      choice
-        [ char '#' *> go (hashCount+1)
-        , multilineStringLiteral hashCount <* closingHashesParser
-        , multilineBytesLiteral  hashCount <* closingHashesParser
-        , simpleStringLiteral    hashCount <* closingHashesParser
-        , simpleBytesLiteral     hashCount <* closingHashesParser
-        ] <|> fail "expecting a string or bytes literal"
+stringLiteral :: Parser (Either [InterpolationElement] Text)
+stringLiteral = do
+  hashCount <- length <$> many (char '#')
+  res <- choice
+    [ multilineStringLiteral hashCount
+    , multilineBytesLiteral  hashCount
+    , simpleStringLiteral    hashCount
+    , simpleBytesLiteral     hashCount
+    , fail "expecting a string or bytes literal"
+    ]
+  count hashCount (char '#') <|>
+    fail "the number of closing # must match the number in the opening"
+  skipToNextToken True
+  pure res
 
 simpleStringLiteral :: Int -> Parser (Either [InterpolationElement] Text)
 simpleStringLiteral hashCount = do
@@ -778,8 +586,8 @@ simpleStringLiteral hashCount = do
 
 multilineStringLiteral :: Int -> Parser (Either [InterpolationElement] Text)
 multilineStringLiteral hashCount = do
-  string "\"\"\""
-  res <- charLiteral hashCount True False `manyTill` string "\"\"\""
+  string "\"\"\"\n"
+  res <- charLiteral hashCount True False `manyTill` multilineClosing "\"\"\""
   pure $ postProcess res
 
 simpleBytesLiteral :: Int -> Parser (Either [InterpolationElement] Text)
@@ -790,9 +598,12 @@ simpleBytesLiteral hashCount = do
 
 multilineBytesLiteral :: Int -> Parser (Either [InterpolationElement] Text)
 multilineBytesLiteral hashCount = do
-  string "'''"
-  res <- charLiteral hashCount True True `manyTill` string "'''"
+  string "'''\n"
+  res <- charLiteral hashCount True True `manyTill` multilineClosing "'''"
   pure $ postProcess res
+
+multilineClosing :: Text -> Parser ()
+multilineClosing s = try $ void $ char '\n' >> hspace >> string s
 
 charLiteral :: Int -> Bool -> Bool -> Parser InterpolationElement
 charLiteral hashCount allowNewline isSingleQuotes = do
@@ -815,12 +626,12 @@ charLiteral hashCount allowNewline isSingleQuotes = do
              '/'  -> pure $ InterpolationString "/"
              '\\' -> pure $ InterpolationString "\\"
              '\'' -> do
-               when isSingleQuotes $
-                 fail "unexpected escaped single quote in raw bytes literal"
+               unless isSingleQuotes $
+                 fail "unexpected escaped single quote in string literal"
                pure $ InterpolationString "'"
              '"'  -> do
-               unless isSingleQuotes $
-                 fail "unexpected escaped double quote in string literal"
+               when isSingleQuotes $
+                 fail "unexpected escaped double quote in bytes literal"
                pure $ InterpolationString "\""
              'u'  -> do
                -- TODO: handle out of bounds hex values
@@ -858,31 +669,40 @@ postProcess l = case foldr fuse [] l of
     fuse (InterpolationString t1) (InterpolationString t2 : l) = InterpolationString (t1<>t2) : l
     fuse x l = x : l
 
-stringLiteral :: Parser Text
-stringLiteral = try stringOrInterpolationLiteral >>= \case
-  Left _  -> fail "expected string found interpolation"
-  Right s -> pure s
-
 structLiteral :: Parser [Declaration]
-structLiteral = braces block
+structLiteral = operator OperatorBracesOpen *> do
+  optional (operator OperatorBracesClose) >>= \case
+    Just _  -> pure []
+    Nothing -> do
+      h <- declaration
+      t <- many $ comma *> declaration
+      operator OperatorBracesClose
+      pure (h:t)
 
 listLiteral :: Parser ListLiteral
-listLiteral = operator OperatorBracketsOpen *> go []
+listLiteral = operator OperatorBracketsOpen *> do
+  optional (operator OperatorBracketsClose) >>= \case
+    Just _  -> pure $ ClosedList []
+    Nothing -> optional ellipsis >>= \case
+      Just expr -> do
+        closing
+        pure $ OpenList [] expr
+      Nothing -> do
+        h <- embedding
+        go [h]
   where
+    closing = do
+      optional explicitComma
+      operator OperatorBracketsClose
     go elems = do
-      ellip <- optional ellipsis
-      case ellip of
-        Just expr -> do
-          optional explicitComma
-          operator OperatorBracketsClose
-          pure $ OpenList elems expr
+      optional (try closing) >>= \case
+        Just _  -> pure $ ClosedList elems
         Nothing -> do
-          elemt <- embedding
-          sep   <- optional explicitComma
-          close <- optional $ operator OperatorBracketsClose
-          let
-            newElems = elems ++ [elemt]
-          case (close, sep) of
-            (Just _, _) -> pure $ ClosedList newElems
-            (_, Just _) -> go newElems
-            _           -> fail "FIXME expected comma or closing brackets, found neither"
+          explicitComma
+          optional ellipsis >>= \case
+            Just expr -> do
+              closing
+              pure $ OpenList elems expr
+            Nothing -> do
+              elemt <- embedding
+              go $ elems ++ [elemt]

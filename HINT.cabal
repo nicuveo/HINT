@@ -23,6 +23,7 @@ source-repository head
 
 library
   exposed-modules:
+      Lang.Cue.Grammar
       Lang.Cue.Parser
       Lang.Cue.Printer
   other-modules:
@@ -51,46 +52,15 @@ library
     , vector
   default-language: Haskell2010
 
-test-suite e2e-tests
+test-suite tests
   type: exitcode-stdio-1.0
-  main-is: E2ETests.hs
+  main-is: Tests.hs
   other-modules:
+      Lang.Cue.Grammar
       Lang.Cue.Parser
       Lang.Cue.Printer
-  hs-source-dirs:
-      src
-      test
-  default-extensions:
-      BlockArguments
-      FlexibleContexts
-      FlexibleInstances
-      LambdaCase
-      MultiWayIf
-      OverloadedStrings
-      StrictData
-      TupleSections
-      TypeApplications
-      TypeFamilies
-  ghc-options: -fno-warn-missing-signatures
-  build-depends:
-      base >=4.7 && <5
-    , directory
-    , extra
-    , megaparsec
-    , monad-loops
-    , mtl
-    , tasty
-    , tasty-hunit
-    , tasty-quickcheck
-    , text
-    , vector
-  default-language: Haskell2010
-
-test-suite unit-tests
-  type: exitcode-stdio-1.0
-  main-is: UnitTests.hs
-  other-modules:
-      Lang.Cue.Parser
+      Arbitrary
+      Paths_HINT
   hs-source-dirs:
       src
       test
