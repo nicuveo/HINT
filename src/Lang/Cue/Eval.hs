@@ -29,8 +29,8 @@ import           Lang.Cue.Value
 unify :: CoreValue v -> CoreValue v -> CoreValue v
 unify = curry \case
   -- Top is the neutral element
-  (Top, _) -> Top
-  (_, Top) -> Top
+  (Top, v) -> v
+  (v, Top) -> v
   -- Bottom always wins
   (Bottom e, _) -> Bottom e
   (_, Bottom e) -> Bottom e
