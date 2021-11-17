@@ -94,47 +94,69 @@ keyword kw = try $ identifierOrKeyword >>= \case
     | otherwise -> fail "FIXME expected keyword kw, got other keyword k"
   Right i -> fail "FIXME expected keyword kw, got identifier"
 
+-- | Parses an operator, and does NOT skip following space.
+nextOperator :: Parser (Operator, Bool)
+nextOperator = choice
+  [ (OperatorEOFComma,      False) <$ eof
+  , (OperatorRealComma,     False) <$ char ','
+  , (OperatorNewlineComma,  False) <$ char '\n'
+  , (OperatorAdd,           False) <$ char '+'
+  , (OperatorSub,           False) <$ char '-'
+  , (OperatorPow,           False) <$ char '^'
+  , (OperatorMul,           False) <$ char '*'
+  , (OperatorQuo,           False) <$ char '/'
+  , (OperatorArrow,         False) <$ string "<-"
+  , (OperatorLAnd,          False) <$ string "&&"
+  , (OperatorLOr,           False) <$ string "||"
+  , (OperatorAnd,           False) <$ char '&'
+  , (OperatorOr,            False) <$ char '|'
+  , (OperatorEqual,         False) <$ string "=="
+  , (OperatorNotEqual,      False) <$ string "!="
+  , (OperatorMatch,         False) <$ string "=~"
+  , (OperatorNotMatch,      False) <$ string "!~"
+  , (OperatorLTE,           False) <$ string "<="
+  , (OperatorGTE,           False) <$ string ">="
+  , (OperatorLT,            False) <$ char '<'
+  , (OperatorGT,            False) <$ char '>'
+  , (OperatorBind,          False) <$ char '='
+  , (OperatorIsA,           False) <$ string "::"
+  , (OperatorColon,         False) <$ char ':'
+  , (OperatorOption,        True ) <$ char '?'
+  , (OperatorNot,           False) <$ char '!'
+  , (OperatorParensOpen,    False) <$ char '('
+  , (OperatorParensClose,   True ) <$ char ')'
+  , (OperatorBracesOpen,    False) <$ char '{'
+  , (OperatorBracesClose,   True ) <$ char '}'
+  , (OperatorBracketsOpen,  False) <$ char '['
+  , (OperatorBracketsClose, True ) <$ char ']'
+  , (OperatorBottom,        True ) <$ string "_|_"
+  , (OperatorEllipsis,      True ) <$ string "..."
+  , (OperatorPeriod,        False) <$ char '.'
+  ]
+
 operators :: [Operator] -> Parser Operator
-operators = choice . map operator
+operators ops = do
+  (op, autoComma) <- try $ do
+    (op, autoComma) <- nextOperator
+    unless (op `elem` ops) $
+      fail $ "expected one of " <> show ops <> ", got " <> show op
+    pure (op, autoComma)
+  skipToNextToken autoComma
+  pure op
 
 operator :: Operator -> Parser Operator
-operator op = do
-  autoComma <- case op of
-    OperatorRealComma     -> False <$ char ','
-    OperatorNewlineComma  -> False <$ char '\n'
-    OperatorEOFComma      -> False <$ eof
-    OperatorAdd           -> False <$ char '+'
-    OperatorSub           -> False <$ char '-'
-    OperatorPow           -> False <$ char '^'
-    OperatorMul           -> False <$ char '*'
-    OperatorQuo           -> False <$ char '/'
-    OperatorArrow         -> False <$ string "<-"
-    OperatorLAnd          -> False <$ string "&&"
-    OperatorLOr           -> False <$ string "||"
-    OperatorAnd           -> False <$ char '&'
-    OperatorOr            -> False <$ char '|'
-    OperatorEqual         -> False <$ string "=="
-    OperatorNotEqual      -> False <$ string "!="
-    OperatorMatch         -> False <$ string "=~"
-    OperatorNotMatch      -> False <$ string "!~"
-    OperatorLTE           -> False <$ string "<="
-    OperatorGTE           -> False <$ string ">="
-    OperatorLT            -> False <$ char '<'
-    OperatorGT            -> False <$ char '>'
-    OperatorBind          -> False <$ char '='
-    OperatorIsA           -> False <$ string "::"
-    OperatorColon         -> False <$ char ':'
-    OperatorOption        -> True  <$ char '?'
-    OperatorNot           -> False <$ char '!'
-    OperatorParensOpen    -> False <$ char '('
-    OperatorParensClose   -> True  <$ char ')'
-    OperatorBracesOpen    -> False <$ char '{'
-    OperatorBracesClose   -> True  <$ char '}'
-    OperatorBracketsOpen  -> False <$ char '['
-    OperatorBracketsClose -> True  <$ char ']'
-    OperatorBottom        -> True  <$ string "_|_"
-    OperatorEllipsis      -> True  <$ string "..."
-    OperatorPeriod        -> False <$ char '.'
+operator expected = do
+  (op, autoComma) <- try $ do
+    (op, autoComma) <- nextOperator
+    unless (op == expected) $
+      fail $ "expected " <> show expected <>  ", got "<> show op
+    pure (op, autoComma)
+  skipToNextToken autoComma
+  pure op
+
+anyOperator :: Parser Operator
+anyOperator = do
+  (op, autoComma) <- nextOperator
   skipToNextToken autoComma
   pure op
 
@@ -166,7 +188,7 @@ attribute = do
 
 token :: Parser Token
 token = label "token" $ choice
-  [ TokenOperator <$> operators [minBound..maxBound]
+  [ TokenOperator <$> anyOperator
   , TokenAttribute <$> attribute
   , either TokenFloat TokenInteger <$> numberLiteral
   , either TokenKeyword TokenIdentifier <$> identifierOrKeyword
@@ -320,7 +342,7 @@ letClause = do
 expression :: Parser Expression
 expression = binaryOp binaryOperators
   where
-    binaryOp [] = Unary <$> unaryExpr
+    binaryOp [] = Unary <$> unaryExpression
     binaryOp (ops:rest) = do
       lhs <- binaryOp rest
       opc <- many $ choice $ ops <&> \(op, constructor) -> do
@@ -386,8 +408,8 @@ unaryExpression = do
       , OperatorGT
       ]
 
-primaryExpr :: Parser PrimaryExpression
-primaryExpr = do
+primaryExpression :: Parser PrimaryExpression
+primaryExpression = do
   o <- PrimaryOperand <$> operand
   suffixes o
   where
@@ -428,7 +450,7 @@ primaryExpr = do
 --
 -- The order of operations here is tricky, because of some conflicting syntax:
 --   - @_|_@ can parse as either the bottom literal, or as the disjunction of
---     the identifiers @_@ and @_@
+--     the identifiers @_@ and @_@ (if allowed)
 --   - # can be the start of an identifier OR of a string literal
 --
 -- We `try` the case of the identifier first, to avoid backtracking all the way
