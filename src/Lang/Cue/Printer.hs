@@ -145,7 +145,6 @@ instance Printer SourceFile where
       , maybeToList $ ident <&> \n -> "package " <> build i n
       , build i <$> imports
       , build i <$> decls
-      , [""] -- forces a newline at the end of the file
       ]
 
 instance Printer Import where
