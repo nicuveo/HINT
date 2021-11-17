@@ -15,9 +15,10 @@ TODO:
     - [ ] fix field parsing
     - [x] add representation for comprehensions
     - [x] fix literals parsing
+    - [ ] simplify unary operators
     - [ ] harmonize errors
     - [ ] generalize to any string type?
-    - [ ] differentiate between "name" and "identifier" to avoid `#` in places such as package name?
+    - [x] differentiate between "name" and "identifier" to avoid `#` in places such as package name
   - Printer
     - [x] implement interpolation
     - [ ] implement fields / values
@@ -31,8 +32,9 @@ TODO:
     - [ ] decide on a list of operations
   - Tests
     - [x] merge tests suite
-    - [ ] reduce the size of arbitrary literals (rewrite to functions instead of instances)
-    - [ ] debug remaining quickcheck issues
+    - [x] implement shrink everywhere
+    - [x] debug remaining quickcheck issues
+    - [ ] fix missing arbitrary declarations
     - add test cases for known edge cases
       - [ ] `_|_` being interpreted as `_ | _`
       - [ ] identifier `#foo` being interpreted as a string literal
