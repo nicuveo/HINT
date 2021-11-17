@@ -330,9 +330,9 @@ instance Arbitrary Literal where
       , pure BottomLiteral
       ]
     , guard (s>0) *>
-      [ StringLiteral . Left  <$> scale (`div` 2) arbitraryInterpolation
-      , ListLiteral           <$> scale (`div` 2) arbitrary
-      , StructLiteral         <$> scale (`div` 2) arbitrary
+      [ StringLiteral . Left  <$> scale (`div` 5) arbitraryInterpolation
+      , ListLiteral           <$> scale (`div` 5) arbitrary
+      , StructLiteral         <$> scale (`div` 5) arbitrary
       ]
     ]
   shrink = \case
