@@ -37,32 +37,37 @@ skipToNextToken autoComma = do
   where
     comment = L.skipLineComment "//"
 
+-- | Parses a name, which is the body of an identifier without its
+-- modifiers. See 'identifierText'.
+nameText :: Parser Text
+nameText = try $ do
+  firstC <- letterChar
+  rest   <- many $ char '_' <|> letterChar <|> digitChar
+  pure $ T.cons firstC (T.pack rest)
+
 -- | Parses the raw text that matches an identifier, but doesn't perforn any
 -- further check. Does NOT skip to the next token!
 identifierText :: Parser Text
 identifierText = try $ do
-  prefix <- optional $ string "#" <|> string "_#"
-  firstC <- letter
-  rest   <- many $ letter <|> digitChar
-  pure $ fromMaybe mempty prefix <> T.cons firstC (T.pack rest)
-  where
-    letter = char '_' <|> letterChar
+  mods <- optional $ string "_#" <|> string "#" <|> string "_"
+  name <- nameText
+  pure $ fromMaybe "" mods <> name
 
 -- | Parses an identifier, and identify whether it matches a keyword. Skips to
 -- the next token.
 identifierOrKeyword :: Parser (Either Keyword Identifier)
 identifierOrKeyword = do
-  res <- identifierText <&> \case
-    "package" -> Left KeywordPackage
-    "import"  -> Left KeywordImport
-    "null"    -> Left KeywordNull
-    "true"    -> Left KeywordTrue
-    "false"   -> Left KeywordFalse
-    "for"     -> Left KeywordFor
-    "in"      -> Left KeywordIn
-    "if"      -> Left KeywordIf
-    "let"     -> Left KeywordLet
-    ident     -> Right $ Identifier ident
+  res <- identifierText >>= \case
+    "package" -> pure $ Left KeywordPackage
+    "import"  -> pure $ Left KeywordImport
+    "null"    -> pure $ Left KeywordNull
+    "true"    -> pure $ Left KeywordTrue
+    "false"   -> pure $ Left KeywordFalse
+    "for"     -> pure $ Left KeywordFor
+    "in"      -> pure $ Left KeywordIn
+    "if"      -> pure $ Left KeywordIf
+    "let"     -> pure $ Left KeywordLet
+    ident     -> Right <$> mkIdentifier ident
   skipToNextToken True
   pure res
 
@@ -72,6 +77,13 @@ identifier :: Parser Identifier
 identifier = try $ identifierOrKeyword >>= \case
   Left kw -> fail "FIXME expected identifier, got keyword"
   Right i -> pure i
+
+name :: Parser Name
+name = do
+  Identifier n h d <- identifier
+  when (h || d) $
+    fail "a name cannot be prefixed with # or _"
+  pure n
 
 -- | Parses an keyword, and skips to the next token on success. Fails without
 -- consuming input if the found token is an identifier.
@@ -129,11 +141,11 @@ operator op = do
 attribute :: Parser Attribute
 attribute = do
   char '@'
-  name <- identifierText
+  name <- mkName =<< identifierText
   operator OperatorParensOpen
   toks <- attrTokens OperatorParensClose
   skipToNextToken True
-  pure $ Attribute (Identifier name) toks
+  pure $ Attribute name toks
   where
     attrTokens closing = do
       t <- token
@@ -202,11 +214,11 @@ sourceFile = do
   eof
   pure $ SourceFile p a (concat i) d
 
-packageClause :: Parser Identifier
+packageClause :: Parser Name
 packageClause = keyword KeywordPackage >> packageName
 
-packageName :: Parser Identifier
-packageName = identifier
+packageName :: Parser Name
+packageName = name
 
 importDecl :: Parser [Import]
 importDecl = do
@@ -281,8 +293,8 @@ labelExpr = labelNameExpr <|> labelAliasExpr
 
 labelName :: Parser LabelName
 labelName = do
-  Identifier n <- identifier
-  pure n -- FIXME: simpleStringLit <|> identifier
+  n <- identifier
+  pure "" -- FIXME: simpleStringLit <|> identifier
 
 ellipsis :: Parser Ellipsis
 ellipsis = operator OperatorEllipsis *> optional expression
@@ -675,8 +687,7 @@ structLiteral = operator OperatorBracesOpen *> do
     Just _  -> pure []
     Nothing -> do
       h <- declaration
-      t <- many $ comma *> declaration
-      operator OperatorBracesClose
+      t <- (comma *> declaration) `manyTill` (try $ optional comma >> operator OperatorBracesClose)
       pure (h:t)
 
 listLiteral :: Parser ListLiteral
