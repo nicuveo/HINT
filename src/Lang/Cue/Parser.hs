@@ -366,13 +366,12 @@ aliasedExpression = do
   expr  <- expression
   pure $ AliasedExpression alias expr
 
-unaryExpr :: Parser UnaryExpression
-unaryExpr = choice [withOp, PrimaryExpression <$> primaryExpr]
+unaryExpression :: Parser UnaryExpression
+unaryExpression = do
+  ops <- many $ operators unaryOperators
+  pe  <- primaryExpression
+  pure $ UnaryExpression ops pe
   where
-    withOp = do
-      op   <- operators unaryOperators
-      expr <- unaryExpr
-      pure $ UnaryExpression op expr
     unaryOperators =
       [ OperatorAdd
       , OperatorSub

@@ -242,9 +242,10 @@ data Expression
   | Disjunction    Expression Expression
   deriving (Show, Eq)
 
-data UnaryExpression
-  = UnaryExpression Operator UnaryExpression
-  | PrimaryExpression PrimaryExpression
+data UnaryExpression = UnaryExpression
+  { ueOperators         :: [Operator]
+  , uePrimaryExpression :: PrimaryExpression
+  }
   deriving (Show, Eq)
 
 data PrimaryExpression

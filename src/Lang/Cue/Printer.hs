@@ -235,9 +235,8 @@ instance Printer Expression where
     Disjunction    lhs rhs -> build i lhs <> " | "  <> build i rhs
 
 instance Printer UnaryExpression where
-  build i = \case
-    UnaryExpression o u -> build i o <> " " <> build i u
-    PrimaryExpression p -> build i p
+  build i (UnaryExpression ops pe) =
+    listWith i "" " " ops <> build i pe
 
 instance Printer PrimaryExpression where
   build i = \case

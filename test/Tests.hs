@@ -44,7 +44,7 @@ testParser parser input ast = case runParser (parser <* eof) "<interactive>" inp
 expressionTests =
   [ ( "bounds"
     , ">= 5.0"
-    , Unary (UnaryExpression OperatorGTE (PrimaryExpression (PrimaryOperand (OperandLiteral (FloatLiteral 5)))))
+    , Unary (UnaryExpression [OperatorGTE] (PrimaryOperand (OperandLiteral (FloatLiteral 5))))
     )
   ]
 

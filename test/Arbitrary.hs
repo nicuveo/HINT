@@ -255,24 +255,22 @@ instance Arbitrary Expression where
     where
       sh c lhs rhs =
         -- sub-expressions
-        lhs : rhs :
+        lhs : rhs : concat
         -- same operator, simplified sub-expression
-        (c <$> shrink lhs <*> shrink rhs)
+        [ c <$> shrink lhs <*> pure   rhs
+        , c <$> pure   lhs <*> shrink rhs
+        ]
 
 instance Arbitrary UnaryExpression where
-  arbitrary = sized ue
+  arbitrary = UnaryExpression
+    <$> listOf arbitraryUnaryOperator
+    <*> arbitrary
+  shrink (UnaryExpression ops e) = concat
+    [ UnaryExpression <$> shrinkOps ops <*> pure   e
+    , UnaryExpression <$> pure      ops <*> shrink e
+    ]
     where
-      ue n = do
-        ops <- chooseInt (0, n `div` 2)
-        elt <- PrimaryExpression <$> arbitrary
-        go ops elt
-      go 0 e = pure e
-      go n e = do
-        op <- arbitraryUnaryOperator
-        go (n-1) $ UnaryExpression op e
-  shrink = \case
-    PrimaryExpression  e -> PrimaryExpression <$> shrink e
-    UnaryExpression op e -> e : (UnaryExpression op <$> shrink e)
+      shrinkOps = shrinkList shrinkNothing
 
 instance Arbitrary PrimaryExpression where
   arbitrary = scale (`div` 5) do
