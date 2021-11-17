@@ -6,7 +6,7 @@ import qualified Data.Text.IO           as T
 import           Test.Tasty
 import           Test.Tasty.HUnit
 import           Test.Tasty.QuickCheck
-import           Text.Megaparsec        (eof, errorBundlePretty, runParser)
+import           Text.Megaparsec        hiding (Label, token)
 
 import           Lang.Cue.Grammar
 import           Lang.Cue.Parser
@@ -70,7 +70,7 @@ numberLitTests =
 sourceFileTests =
   [ ( "package name"
     , "package foo"
-    , SourceFile (Just $ Identifier "foo") [] [] []
+    , SourceFile (Just "foo") [] [] []
     )
   , ( "top level attribute"
     , "@z(id = let)"
@@ -79,17 +79,6 @@ sourceFileTests =
   , ( "import statement"
     , "import \"blaaah\""
     , SourceFile Nothing [] [Import Nothing "blaaah" Nothing] []
-    )
-  , ( "all combined"
-    , "@package(attr=fixme),package floof\na: b: foo\n"
-    , SourceFile
-      { moduleName = Just (Identifier "floof")
-      , moduleAttributes = [Attribute {attributeName = Identifier "package", attributeTokens = [AttributeToken (TokenIdentifier (Identifier "attr")), AttributeToken (TokenOperator OperatorBind),AttributeToken (TokenIdentifier (Identifier "fixme"))]}]
-      , moduleImports = []
-      , moduleDeclarations =
-        [ DeclarationField (Field {fieldLabels = Label {labelIdentifier = Nothing, labelExpression = LabelName Required "a"} :| [Label {labelIdentifier = Nothing, labelExpression = LabelName Required "b"}], fieldExpression = AliasedExpression {aeAlias = Nothing, aeExpression = Unary (PrimaryExpression (PrimaryOperand (OperandName (QualifiedIdentifier {qiPackageName = Nothing, qiIdentifier = Identifier "foo"}))))}, fieldAttributes = []})
-        ]
-      }
     )
   ]
 
@@ -102,15 +91,14 @@ printerUTests = testGroup "Parser"
   ]
 
 testRoundTrips = testGroup "round trip"
-  [ roundTrip "token"       token
+  [ roundTrip "token"       (token `manyTill` eof)
   , roundTrip "literal"     literal
   , roundTrip "expression"  expression
   , roundTrip "source file" sourceFile
   ]
 
 roundTrip n p = testProperty n \x ->
-  counterexample (show $ displayStrict x) $
-    runParser (p <* eof) "" (displayStrict x) == Right x
+  runParser (p <* eof) "" (displayStrict x) == Right x
 
 
 --------------------------------------------------------------------------------
