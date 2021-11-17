@@ -4,6 +4,7 @@ module Lang.Cue.Printer
   , buildString
   ) where
 
+import           Data.Char
 import           Data.Functor           ((<&>))
 import           Data.List              (intersperse)
 import qualified Data.List.NonEmpty     as NE
@@ -13,7 +14,6 @@ import qualified Data.Text              as T
 import           Data.Text.Lazy         (toStrict)
 import qualified Data.Text.Lazy         as TL
 import           Data.Text.Lazy.Builder
-import Data.Char
 
 import           Lang.Cue.Grammar
 

@@ -3,7 +3,7 @@
 module Arbitrary where
 
 import           Control.Monad
-import           Data.List.NonEmpty    (NonEmpty(..))
+import           Data.List.NonEmpty    (NonEmpty (..))
 import qualified Data.List.NonEmpty    as NE
 import           Data.Text             (Text)
 import qualified Data.Text             as T
@@ -232,7 +232,7 @@ instance Arbitrary Expression where
             o <- elements x
             o <$> e r (d-1) <*> e r (d-1)
   shrink = \case
-    Unary ue -> Unary <$> shrink ue
+    Unary ue               -> Unary <$> shrink ue
     Multiplication lhs rhs -> sh Multiplication lhs rhs
     Division       lhs rhs -> sh Division       lhs rhs
     Addition       lhs rhs -> sh Addition       lhs rhs

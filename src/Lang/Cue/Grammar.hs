@@ -6,7 +6,7 @@ import qualified Control.Monad.State        as MS
 import           Data.Char
 import           Data.Functor               ((<&>))
 import qualified Data.List                  as L
-import           Data.List.NonEmpty         (NonEmpty(..))
+import           Data.List.NonEmpty         (NonEmpty (..))
 import qualified Data.List.NonEmpty         as NE
 import           Data.Maybe
 import           Data.String
@@ -308,6 +308,6 @@ data Literal
   deriving (Show, Eq)
 
 data ListLiteral
-   = ClosedList [Embedding]
-   | OpenList   [Embedding] Ellipsis
+  = ClosedList [Embedding]
+  | OpenList   [Embedding] Ellipsis
   deriving (Show, Eq)
