@@ -11,8 +11,8 @@ TODO:
     - [ ] write documentation
     - [ ] decide on a license
   - Parser
-    - [ ] implement labelName
-    - [ ] fix field parsing
+    - [x] implement labelName
+    - [x] fix field parsing
     - [x] add representation for comprehensions
     - [x] fix literals parsing
     - [x] simplify unary operators
@@ -21,10 +21,10 @@ TODO:
     - [x] differentiate between "name" and "identifier" to avoid `#` in places such as package name
   - Printer
     - [x] implement interpolation
-    - [ ] implement fields / values
+    - [x] implement fields
     - [x] implement comprehensions
     - [x] properly escape string values
-    - [ ] cleanup block printer
+    - [x] cleanup block printer
   - Evaluation
     - [ ] everything
   - Binary
@@ -34,7 +34,7 @@ TODO:
     - [x] merge tests suite
     - [x] implement shrink everywhere
     - [x] debug remaining quickcheck issues
-    - [ ] fix missing arbitrary declarations
+    - [x] fix missing arbitrary declarations
     - add test cases for known edge cases
       - [x] `_|_` being interpreted as `_ | _`
       - [x] identifier `#foo` being interpreted as a string literal
