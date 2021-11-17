@@ -93,11 +93,12 @@ instance Arbitrary SourceFile where
     <*> arbitrary
     <*> arbitrary
     <*> arbitrary
-  shrink (SourceFile a b c d) = SourceFile
-    <$> shrink a
-    <*> shrink b
-    <*> shrink c
-    <*> shrink d
+  shrink (SourceFile a b c d) = concat
+    [ SourceFile <$> shrink a <*> pure b   <*> pure c   <*> pure d
+    , SourceFile <$> pure a   <*> shrink b <*> pure c   <*> pure d
+    , SourceFile <$> pure a   <*> pure b   <*> shrink c <*> pure d
+    , SourceFile <$> pure a   <*> pure b   <*> pure c   <*> shrink d
+    ]
 
 instance Arbitrary Import where
   arbitrary = Import
@@ -169,9 +170,11 @@ instance Arbitrary Comprehension where
     <*> arbitrary
     where
       firstFor = ComprehensionFor <$> arbitrary <*> arbitrary
-  shrink (Comprehension (f :| clauses) decls) = Comprehension
-    <$> ((:|) <$> shrink f <*> shrink clauses)
-    <*> shrink decls
+  shrink (Comprehension (f :| clauses) decls) = concat
+    [ Comprehension <$> ((:|) <$> shrink f <*> pure   clauses) <*> pure   decls
+    , Comprehension <$> ((:|) <$> pure   f <*> shrink clauses) <*> pure   decls
+    , Comprehension <$> ((:|) <$> pure   f <*> pure   clauses) <*> shrink decls
+    ]
 
 instance Arbitrary ComprehensionClause where
   arbitrary = oneof
@@ -290,9 +293,17 @@ instance Arbitrary PrimaryExpression where
         ]
   shrink = \case
     PrimaryOperand  o -> PrimaryOperand <$> shrink o
-    PrimaryIndex pe x -> pe : (PrimaryIndex <$> shrink pe <*> shrink x)
-    PrimarySlice pe x -> pe : (PrimarySlice <$> shrink pe <*> shrink x)
-    PrimaryCall  pe x -> pe : (PrimaryCall  <$> shrink pe <*> shrink x)
+    PrimaryIndex pe x -> sh PrimaryIndex pe x
+    PrimarySlice pe x -> sh PrimarySlice pe x
+    PrimaryCall  pe x -> sh PrimaryCall  pe x
+    where
+      sh c pe x =
+        -- remove the suffix
+        pe : concat
+        -- keep it but simplify its components
+        [ c <$> shrink pe <*> pure   x
+        , c <$> pure   pe <*> shrink x
+        ]
 
 instance Arbitrary Operand where
   arbitrary = sized o
@@ -347,7 +358,12 @@ instance Arbitrary ListLiteral where
   shrink = \case
     ClosedList elems          -> ClosedList <$> shrink elems
     OpenList   elems ellipsis ->
-      ClosedList elems : (OpenList <$> shrink elems <*> shrink ellipsis)
+      -- remove ellipsis
+      ClosedList elems : concat
+      -- shrink components
+      [ OpenList <$> shrink elems <*> pure   ellipsis
+      , OpenList <$> pure   elems <*> shrink ellipsis
+      ]
 
 
 --------------------------------------------------------------------------------
