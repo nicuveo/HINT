@@ -1,23 +1,21 @@
 module Lang.Cue.Parser where
 
+import           Prelude                    hiding (exponent)
+
 import           Control.Monad
-import           Control.Monad.Loops        (unfoldM)
-import qualified Control.Monad.State        as MS
 import           Data.Char
 import           Data.Functor               ((<&>))
 import qualified Data.List                  as L
 import           Data.List.NonEmpty         (NonEmpty (..))
-import qualified Data.List.NonEmpty         as NE
 import           Data.Maybe
-import           Data.String
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
 import           Data.Void
-import           Debug.Trace                (traceM)
 import           Text.Megaparsec            hiding (Label, Token, token)
 import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 
+import           Lang.Cue.Error
 import           Lang.Cue.Grammar
 
 
@@ -80,7 +78,7 @@ keyword kw = try $ identifierOrKeyword >>= \case
   Left  k
     | k == kw   -> pure k
     | otherwise -> fail $ "expected keyword " ++ show kw ++ ", got other keyword " ++ show k
-  Right i -> fail $ "expected keyword " ++ show kw ++ ", got identifier"
+  Right _ -> fail $ "expected keyword " ++ show kw ++ ", got identifier"
 
 -- | Parses an operator, and does NOT skip following space.
 nextOperator :: Parser (Operator, Bool)
@@ -304,8 +302,9 @@ field = do
       . StructLiteral
       . pure
       . DeclarationField
-    go expr [label]      = Field label expr []
-    go expr (label:subs) = Field label (mkExpr $ go expr subs) []
+    go _    []       = unreachable
+    go expr [l]      = Field l expr []
+    go expr (l:subs) = Field l (mkExpr $ go expr subs) []
 
 fieldLabel :: Parser Label
 fieldLabel = do
@@ -475,7 +474,7 @@ qualifiedIdentifier = try $ do
   case sep of
     Nothing ->
       pure $ QualifiedIdentifier Nothing id1
-    Just pn -> do
+    Just _ -> do
       id2 <- identifier
       pure $ QualifiedIdentifier (Just id1) id2
 
@@ -510,6 +509,7 @@ forClause = do
     Just i  -> ComprehensionIndexedFor ident1 i expr
     Nothing -> ComprehensionFor        ident1   expr
 
+guardClause :: Parser ComprehensionClause
 guardClause = do
   keyword KeywordIf
   ComprehensionIf <$> expression
@@ -586,16 +586,17 @@ numberLiteral = do
       d <- decimals
       pure $ e : maybe "" pure s ++ d
     multiplier = do
-      r <- oneOf @[] "KMGTP"
+      r <- choice
+        [ 1 <$ char 'K'
+        , 2 <$ char 'M'
+        , 3 <$ char 'G'
+        , 4 <$ char 'T'
+        , 5 <$ char 'P'
+        ]
       i <- optional (char 'i') <&> \case
         Just _  -> 1024
         Nothing -> 1000
-      pure $ case r of
-        'K' -> i**1
-        'M' -> i**2
-        'G' -> i**3
-        'T' -> i**4
-        'P' -> i**5
+      pure $ i ** r
 
 stringLiteral :: Parser (Either [InterpolationElement] Text)
 stringLiteral = do
@@ -648,8 +649,8 @@ charLiteral hashCount allowNewline isSingleQuotes = do
            s <- many $ char '#'
            pure $ InterpolationString $ T.pack $ '\\' : s
          Just _  -> do
-           c <- oneOf @[] "abfnrtv/\\'\"(uUx01234567" <|> fail "invalid escape character"
-           case c of
+           e <- oneOf @[] "abfnrtv/\\'\"(uUx01234567" <|> fail "invalid escape character"
+           case e of
              'a'  -> pure $ InterpolationString "\a"
              'b'  -> pure $ InterpolationString "\b"
              'f'  -> pure $ InterpolationString "\f"
@@ -684,9 +685,9 @@ charLiteral hashCount allowNewline isSingleQuotes = do
              '(' -> do
                -- TODO: what about newlines?
                skipToNextToken True
-               e <- expression
+               expr <- expression
                char ')' <|> fail "expecting closing paren at the end of interpolation"
-               pure $ InterpolationExpression e
+               pure $ InterpolationExpression expr
              oct -> do
                unless isSingleQuotes $
                  fail "unexpected octal value in string literal"
@@ -700,8 +701,8 @@ postProcess l = case foldr fuse [] l of
   [InterpolationString t] -> Right t
   heterogeneousList       -> Left heterogeneousList
   where
-    fuse (InterpolationString t1) (InterpolationString t2 : l) = InterpolationString (t1<>t2) : l
-    fuse x l = x : l
+    fuse (InterpolationString t1) (InterpolationString t2 : r) = InterpolationString (t1<>t2) : r
+    fuse x r = x : r
 
 structLiteral :: Parser [Declaration]
 structLiteral = operator OperatorBracesOpen *> do

@@ -1,22 +1,13 @@
 module Lang.Cue.Grammar where
 
+import           Control.Applicative
 import           Control.Monad
-import           Control.Monad.Loops        (unfoldM)
-import qualified Control.Monad.State        as MS
 import           Data.Char
-import           Data.Functor               ((<&>))
-import qualified Data.List                  as L
-import           Data.List.NonEmpty         (NonEmpty (..))
-import qualified Data.List.NonEmpty         as NE
+import           Data.List.NonEmpty  (NonEmpty (..))
 import           Data.Maybe
 import           Data.String
-import           Data.Text                  (Text)
-import qualified Data.Text                  as T
-import           Data.Void
-import           Debug.Trace                (traceM)
-import           Text.Megaparsec            hiding (Label, Token, token)
-import           Text.Megaparsec.Char
-import qualified Text.Megaparsec.Char.Lexer as L
+import           Data.Text           (Text)
+import qualified Data.Text           as T
 
 
 --------------------------------------------------------------------------------
@@ -32,6 +23,7 @@ mkIdentifier :: MonadFail m => Text -> m Identifier
 mkIdentifier i = do
   let root = fromMaybe i $ T.stripPrefix "_#" i <|> T.stripPrefix "#" i
   case T.uncons root of
+    Nothing -> fail "identifier cannot be empty"
     Just (h, t) -> do
       unless (isAlpha h || h == '_') $
         fail "identifier must start with a letter (or modifiers)"
