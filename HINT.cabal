@@ -23,6 +23,7 @@ source-repository head
 
 library
   exposed-modules:
+      Lang.Cue.Error
       Lang.Cue.Eval
       Lang.Cue.Grammar
       Lang.Cue.Parser
@@ -34,18 +35,25 @@ library
       src
   default-extensions:
       BlockArguments
+      ConstraintKinds
+      DeriveFoldable
+      DeriveFunctor
+      DeriveTraversable
       FlexibleContexts
       FlexibleInstances
       LambdaCase
       MultiWayIf
       OverloadedStrings
+      ScopedTypeVariables
       StrictData
       TupleSections
       TypeApplications
       TypeFamilies
-  ghc-options: -fwarn-tabs -fno-warn-unused-do-bind
+      ViewPatterns
+  ghc-options: -Wall -Werror -fwarn-tabs -fno-warn-unused-do-bind
   build-depends:
       base >=4.7 && <5
+    , containers
     , extra
     , megaparsec
     , monad-loops
@@ -59,6 +67,7 @@ test-suite tests
   type: exitcode-stdio-1.0
   main-is: Tests.hs
   other-modules:
+      Lang.Cue.Error
       Lang.Cue.Eval
       Lang.Cue.Grammar
       Lang.Cue.Parser
@@ -71,18 +80,25 @@ test-suite tests
       test
   default-extensions:
       BlockArguments
+      ConstraintKinds
+      DeriveFoldable
+      DeriveFunctor
+      DeriveTraversable
       FlexibleContexts
       FlexibleInstances
       LambdaCase
       MultiWayIf
       OverloadedStrings
+      ScopedTypeVariables
       StrictData
       TupleSections
       TypeApplications
       TypeFamilies
+      ViewPatterns
   ghc-options: -fno-warn-missing-signatures
   build-depends:
       base >=4.7 && <5
+    , containers
     , extra
     , megaparsec
     , monad-loops

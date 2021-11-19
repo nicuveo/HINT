@@ -13,6 +13,7 @@ description:         Please see the README on GitHub at <https://github.com/nicu
 
 dependencies:
  - base >= 4.7 && < 5
+ - containers
  - extra
  - megaparsec
  - monad-loops
@@ -23,20 +24,27 @@ dependencies:
 
 default-extensions:
  - BlockArguments
+ - ConstraintKinds
+ - DeriveFoldable
+ - DeriveFunctor
+ - DeriveTraversable
  - FlexibleContexts
  - FlexibleInstances
  - LambdaCase
  - MultiWayIf
  - OverloadedStrings
+ - ScopedTypeVariables
  - StrictData
  - TupleSections
  - TypeApplications
  - TypeFamilies
+ - ViewPatterns
 
 library:
   source-dirs: src
   ghc-options:
-#    - -Wall
+    - -Wall
+    - -Werror
     - -fwarn-tabs
     - -fno-warn-unused-do-bind
 

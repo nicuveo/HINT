@@ -1,24 +1,12 @@
 module Lang.Cue.Value where
 
-import           Control.Monad
-import           Control.Monad.Loops        (unfoldM)
-import qualified Control.Monad.State        as MS
-import           Data.Char
-import           Data.Functor               ((<&>))
 import           Data.HashMap.Strict
-import qualified Data.List                  as L
-import           Data.List.NonEmpty         (NonEmpty (..))
-import qualified Data.List.NonEmpty         as NE
 import           Data.Maybe
-import           Data.String
+import           Data.Sequence              (Seq)
 import           Data.Text                  (Text)
-import qualified Data.Text                  as T
 import           Data.Void
-import           Debug.Trace                (traceM)
-import           Text.Megaparsec            hiding (Label, Token, token)
-import           Text.Megaparsec.Char
-import qualified Text.Megaparsec.Char.Lexer as L
 
+import           Lang.Cue.Error
 import           Lang.Cue.Grammar
 
 
@@ -29,20 +17,18 @@ data CoreValue v
   = Type   Type
   | Atom   Atom
   | Bound  Bound
-  | Struct (Struct v)
-  | Bottom Error
+--  | Struct (Struct v)
+  | Bottom BottomSource
   | Top
   | Null
-  | ClosedList [CoreValue v]
-  | OpenList   [CoreValue v] (CoreValue v)
-  | UnificationOf (CoreValue v) (CoreValue v)
-  | DisjunctionOf (CoreValue v) (CoreValue v)
+-- | ClosedList [CoreValue v]
+-- | OpenList   [CoreValue v] (CoreValue v)
+  | Union (Seq (CoreValue v))
   | WithDefault v v
+  deriving (Show, Functor, Foldable, Traversable)
 
 type Value     = CoreValue BaseValue
 type BaseValue = CoreValue Void
-
-type Error = String
 
 data Type
   = BooleanType
@@ -51,6 +37,7 @@ data Type
   | StringType
   | BytesType
   | StructType Identifier
+  deriving (Show, Eq)
 
 data Atom
   = BooleanAtom Bool
@@ -58,22 +45,74 @@ data Atom
   | FloatAtom   Double
   | StringAtom  Text
   | BytesAtom   Text
+  deriving (Show, Eq)
 
 data Bound
-  = IntegerRange (EndPoint Integer, EndPoint Integer)
-  | FloatRange   (EndPoint Double,  EndPoint Double)
-  | StringRange  (EndPoint Text,    EndPoint Text)
-  | BytesRange   (EndPoint Text,    EndPoint Text)
-  | MatchesRegex Text
-  | Doesn'tMatch Text
-  | Different    Atom
-
-data EndPoint a
-  = Open
-  | Inclusive a
-  | Exclusive a
+  = IntegerBound (OrderedBound Integer)
+  | FloatBound   (OrderedBound Double)
+  | StringBound  (OrderedBound Text)
+  | BytesBound   (OrderedBound Text)
+  | RegexBound   [(Text, Bool)]
+  deriving (Show, Eq)
 
 data Struct v = StructValue
   { structType   :: Maybe Identifier
   , structFields :: HashMap LabelExpression (CoreValue v)
   }
+  deriving (Show, Functor, Foldable, Traversable)
+
+
+--------------------------------------------------------------------------------
+-- Promotion
+
+promote :: BaseValue -> Value
+promote = fmap absurd
+
+-- | FIXME: this is probably incorrect wrt. structs
+demote :: Value -> BaseValue
+demote = fromMaybe (panic DemoteBaseValue) . traverse (const Nothing)
+
+
+--------------------------------------------------------------------------------
+-- Bottom
+
+data BottomSource
+  = ArisedFromLiteral
+  | UnifyWithNull     Value
+  | UnifyTypes        Type  Type
+  | UnifyAtoms        Atom  Atom
+  | UnifyBounds       Bound Bound
+  | UnifyTypeMismatch Value Value
+  | UnifyOOB          Atom  Bound
+  deriving (Show)
+
+
+--------------------------------------------------------------------------------
+-- Bounds checking
+
+data OrderedBound a = OrderedBound
+  { lowerBound :: EndPoint a
+  , upperBound :: EndPoint a
+  , different  :: [a]
+  } deriving (Show, Eq, Functor)
+
+data EndPoint a
+  = Open
+  | Inclusive a
+  | Exclusive a
+  deriving (Show, Eq, Functor)
+
+checkOrdered :: Ord a => OrderedBound a -> a -> Bool
+checkOrdered (OrderedBound l h n) x = checkL && checkH && checkN
+  where
+    checkL =
+      case l of
+        Open        -> True
+        Inclusive a -> x >= a
+        Exclusive a -> x >  a
+    checkH =
+      case h of
+        Open        -> True
+        Inclusive a -> x <= a
+        Exclusive a -> x <  a
+    checkN = x `notElem` n
