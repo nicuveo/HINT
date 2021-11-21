@@ -7,8 +7,9 @@ module Lang.Cue.Printer
 import           Data.Char
 import           Data.Functor           ((<&>))
 import           Data.List              (intersperse)
+import qualified Data.List              as L
 import qualified Data.List.NonEmpty     as NE
-import           Data.Maybe             (catMaybes, maybeToList)
+import           Data.Maybe             (maybeToList)
 import           Data.Text              (Text)
 import qualified Data.Text              as T
 import           Data.Text.Lazy         (toStrict)
@@ -178,7 +179,7 @@ instance Printer LabelExpression where
     LabelConstraint constraint -> "[" <> build i constraint <> "]"
 
 instance Printer Optional where
-  build i = \case
+  build _ = \case
     Optional -> "?"
     Required -> ""
 
@@ -211,23 +212,26 @@ instance Printer ComprehensionClause where
 
 instance Printer Expression where
   build i = \case
-    Unary          u       -> build i u
-    Multiplication lhs rhs -> build i lhs <> " * "  <> build i rhs
-    Division       lhs rhs -> build i lhs <> " / "  <> build i rhs
-    Addition       lhs rhs -> build i lhs <> " + "  <> build i rhs
-    Subtraction    lhs rhs -> build i lhs <> " - "  <> build i rhs
-    Equal          lhs rhs -> build i lhs <> " == " <> build i rhs
-    NotEqual       lhs rhs -> build i lhs <> " != " <> build i rhs
-    Match          lhs rhs -> build i lhs <> " =~ " <> build i rhs
-    NotMatch       lhs rhs -> build i lhs <> " !~ " <> build i rhs
-    LessThan       lhs rhs -> build i lhs <> " < "  <> build i rhs
-    LessOrEqual    lhs rhs -> build i lhs <> " <= " <> build i rhs
-    GreaterThan    lhs rhs -> build i lhs <> " > "  <> build i rhs
-    GreaterOrEqual lhs rhs -> build i lhs <> " >= " <> build i rhs
-    LogicalAnd     lhs rhs -> build i lhs <> " && " <> build i rhs
-    LogicalOr      lhs rhs -> build i lhs <> " || " <> build i rhs
-    Unification    lhs rhs -> build i lhs <> " & "  <> build i rhs
-    Disjunction    lhs rhs -> build i lhs <> " | "  <> build i rhs
+    Unary          u      -> build i u
+    Multiplication l r vs -> buildE " * "  l r vs
+    Division       l r vs -> buildE " / "  l r vs
+    Addition       l r vs -> buildE " + "  l r vs
+    Subtraction    l r vs -> buildE " - "  l r vs
+    Equal          l r vs -> buildE " == " l r vs
+    NotEqual       l r vs -> buildE " != " l r vs
+    Match          l r vs -> buildE " =~ " l r vs
+    NotMatch       l r vs -> buildE " !~ " l r vs
+    LessThan       l r vs -> buildE " < "  l r vs
+    LessOrEqual    l r vs -> buildE " <= " l r vs
+    GreaterThan    l r vs -> buildE " > "  l r vs
+    GreaterOrEqual l r vs -> buildE " >= " l r vs
+    LogicalAnd     l r vs -> buildE " && " l r vs
+    LogicalOr      l r vs -> buildE " || " l r vs
+    Unification    l r vs -> buildE " & "  l r vs
+    Disjunction    l r vs -> buildE " | "  l r vs
+    where
+      buildE op l r vs = L.foldl' (step op) (build i l) (r:vs)
+      step op l r = l <> op <> build i r
 
 instance Printer UnaryExpression where
   build i (UnaryExpression ops pe) =
@@ -268,13 +272,13 @@ instance Printer ListLiteral where
     ClosedList [x]   -> "[" <> build i x <> "]"
     ClosedList (x:r) -> mconcat
       [ "[ " <> build (i+1) x <> ",\n" <> indent
-      , mconcat $ r <&> \x -> "  " <> build (i+1) x <> ",\n" <> indent
+      , mconcat $ r <&> \y -> "  " <> build (i+1) y <> ",\n" <> indent
       , "]"
       ]
     OpenList []    ell -> "[" <> build i ell <> "]"
     OpenList (x:r) ell -> mconcat
       [ "[ " <> build (i+1) x <> ",\n" <> indent
-      , mconcat $ r <&> \x -> "  " <> build (i+1) x <> ",\n" <> indent
+      , mconcat $ r <&> \y -> "  " <> build (i+1) y <> ",\n" <> indent
       , "  " <> build (i+1) ell <> ",\n" <> indent
       , "]"
       ]
@@ -285,7 +289,7 @@ instance Printer ListLiteral where
 -- Helpers
 
 makeBlock :: Printer a => Int -> [a] -> Builder
-makeBlock i []  = "{}"
+makeBlock _ []  = "{}"
 makeBlock i [x] = "{" <> build i x <> "}"
 makeBlock i l   = mconcat
   [ "{\n"

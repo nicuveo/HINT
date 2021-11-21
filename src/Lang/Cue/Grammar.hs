@@ -244,22 +244,22 @@ data ComprehensionClause
 
 data Expression
   = Unary          UnaryExpression
-  | Multiplication Expression Expression
-  | Division       Expression Expression
-  | Addition       Expression Expression
-  | Subtraction    Expression Expression
-  | Equal          Expression Expression
-  | NotEqual       Expression Expression
-  | Match          Expression Expression
-  | NotMatch       Expression Expression
-  | LessThan       Expression Expression
-  | LessOrEqual    Expression Expression
-  | GreaterThan    Expression Expression
-  | GreaterOrEqual Expression Expression
-  | LogicalAnd     Expression Expression
-  | LogicalOr      Expression Expression
-  | Unification    Expression Expression
-  | Disjunction    Expression Expression
+  | Multiplication Expression Expression [Expression]
+  | Division       Expression Expression [Expression]
+  | Addition       Expression Expression [Expression]
+  | Subtraction    Expression Expression [Expression]
+  | Equal          Expression Expression [Expression]
+  | NotEqual       Expression Expression [Expression]
+  | Match          Expression Expression [Expression]
+  | NotMatch       Expression Expression [Expression]
+  | LessThan       Expression Expression [Expression]
+  | LessOrEqual    Expression Expression [Expression]
+  | GreaterThan    Expression Expression [Expression]
+  | GreaterOrEqual Expression Expression [Expression]
+  | LogicalAnd     Expression Expression [Expression]
+  | LogicalOr      Expression Expression [Expression]
+  | Unification    Expression Expression [Expression]
+  | Disjunction    Expression Expression [Expression]
   deriving (Show, Eq)
 
 data UnaryExpression = UnaryExpression

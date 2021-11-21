@@ -207,35 +207,28 @@ instance Arbitrary Expression where
     where
       ops =
         [ -- precedence 1
-          [ Disjunction
-          ]
+          Disjunction
         , -- precedence 2
-          [ Unification
-          ]
+          Unification
         , -- precedence 3
-          [ LogicalOr
-          ]
+          LogicalOr
         , -- precedence 4
-          [ LogicalAnd
-          ]
+          LogicalAnd
         , -- precedence 5
-          [ Equal
-          , NotEqual
-          , Match
-          , NotMatch
-          , LessOrEqual
-          , LessThan
-          , GreaterOrEqual
-          , GreaterThan
-          ]
+          Equal
+        , NotEqual
+        , Match
+        , NotMatch
+        , LessOrEqual
+        , LessThan
+        , GreaterOrEqual
+        , GreaterThan
         , -- precedence 6
-          [ Addition
-          , Subtraction
-          ]
+          Addition
+        , Subtraction
         , -- precedence 7
-          [ Multiplication
-          , Division
-          ]
+          Multiplication
+        , Division
         ]
       e _  0 = Unary <$> arbitrary
       e [] _ = Unary <$> arbitrary
@@ -243,34 +236,33 @@ instance Arbitrary Expression where
         i <- chooseInt (0, length l)
         case drop i l of
           []    -> Unary <$> arbitrary
-          (x:r) -> do
-            o <- elements x
-            o <$> e r (d-1) <*> e r (d-1)
+          (o:r) -> let x = e r (d-1) in o <$> x <*> x <*> listOf x
   shrink = \case
-    Unary ue               -> Unary <$> shrink ue
-    Multiplication lhs rhs -> sh Multiplication lhs rhs
-    Division       lhs rhs -> sh Division       lhs rhs
-    Addition       lhs rhs -> sh Addition       lhs rhs
-    Subtraction    lhs rhs -> sh Subtraction    lhs rhs
-    Equal          lhs rhs -> sh Equal          lhs rhs
-    NotEqual       lhs rhs -> sh NotEqual       lhs rhs
-    Match          lhs rhs -> sh Match          lhs rhs
-    NotMatch       lhs rhs -> sh NotMatch       lhs rhs
-    LessThan       lhs rhs -> sh LessThan       lhs rhs
-    LessOrEqual    lhs rhs -> sh LessOrEqual    lhs rhs
-    GreaterThan    lhs rhs -> sh GreaterThan    lhs rhs
-    GreaterOrEqual lhs rhs -> sh GreaterOrEqual lhs rhs
-    LogicalAnd     lhs rhs -> sh LogicalAnd     lhs rhs
-    LogicalOr      lhs rhs -> sh LogicalOr      lhs rhs
-    Unification    lhs rhs -> sh Unification    lhs rhs
-    Disjunction    lhs rhs -> sh Disjunction    lhs rhs
+    Unary ue              -> Unary <$> shrink ue
+    Multiplication l r vs -> sh Multiplication l r vs
+    Division       l r vs -> sh Division       l r vs
+    Addition       l r vs -> sh Addition       l r vs
+    Subtraction    l r vs -> sh Subtraction    l r vs
+    Equal          l r vs -> sh Equal          l r vs
+    NotEqual       l r vs -> sh NotEqual       l r vs
+    Match          l r vs -> sh Match          l r vs
+    NotMatch       l r vs -> sh NotMatch       l r vs
+    LessThan       l r vs -> sh LessThan       l r vs
+    LessOrEqual    l r vs -> sh LessOrEqual    l r vs
+    GreaterThan    l r vs -> sh GreaterThan    l r vs
+    GreaterOrEqual l r vs -> sh GreaterOrEqual l r vs
+    LogicalAnd     l r vs -> sh LogicalAnd     l r vs
+    LogicalOr      l r vs -> sh LogicalOr      l r vs
+    Unification    l r vs -> sh Unification    l r vs
+    Disjunction    l r vs -> sh Disjunction    l r vs
     where
-      sh c lhs rhs =
+      sh c l r vs =
         -- sub-expressions
-        lhs : rhs : concat
+        l : r : vs <> concat
         -- same operator, simplified sub-expression
-        [ c <$> shrink lhs <*> pure   rhs
-        , c <$> pure   lhs <*> shrink rhs
+        [ c <$> shrink l <*> pure   r <*> pure   vs
+        , c <$> pure   l <*> shrink r <*> pure   vs
+        , c <$> pure   l <*> pure   r <*> shrink vs
         ]
 
 instance Arbitrary UnaryExpression where

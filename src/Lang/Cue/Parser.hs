@@ -343,43 +343,36 @@ expression :: Parser Expression
 expression = binaryOp binaryOperators
   where
     binaryOp [] = Unary <$> unaryExpression
-    binaryOp (ops:rest) = do
+    binaryOp ((op, constructor):rest) = do
       lhs <- binaryOp rest
-      opc <- many $ choice $ ops <&> \(op, constructor) -> do
-        rhs <- operator op *> binaryOp rest
-        pure (constructor, rhs)
-      pure $ foldl (\l (o, r) -> o l r) lhs opc
+      rhs <- many $ operator op *> binaryOp rest
+      pure $ case rhs of
+        []    -> lhs
+        (r:v) -> constructor lhs r v
     binaryOperators =
       [ -- precedence 1
-        [ (OperatorOr, Disjunction)
-        ]
+        (OperatorOr, Disjunction)
       , -- precedence 2
-        [ (OperatorAnd, Unification)
-        ]
+        (OperatorAnd, Unification)
       , -- precedence 3
-        [ (OperatorLOr, LogicalOr)
-        ]
+        (OperatorLOr, LogicalOr)
       , -- precedence 4
-        [ (OperatorLAnd, LogicalAnd)
-        ]
+        (OperatorLAnd, LogicalAnd)
       , -- precedence 5
-        [ (OperatorEqual,    Equal)
-        , (OperatorNotEqual, NotEqual)
-        , (OperatorMatch,    Match)
-        , (OperatorNotMatch, NotMatch)
-        , (OperatorLTE,      LessOrEqual)
-        , (OperatorLT,       LessThan)
-        , (OperatorGTE,      GreaterOrEqual)
-        , (OperatorGT,       GreaterThan)
-        ]
+        (OperatorEqual,    Equal)
+      , (OperatorNotEqual, NotEqual)
+      , (OperatorMatch,    Match)
+      , (OperatorNotMatch, NotMatch)
+      , (OperatorLTE,      LessOrEqual)
+      , (OperatorLT,       LessThan)
+      , (OperatorGTE,      GreaterOrEqual)
+      , (OperatorGT,       GreaterThan)
       , -- precedence 6
-        [ (OperatorAdd, Addition)
-        , (OperatorSub, Subtraction)
-        ]
+        (OperatorAdd, Addition)
+      , (OperatorSub, Subtraction)
       , -- precedence 7
-        [ (OperatorMul, Multiplication)
-        , (OperatorQuo, Division)
-        ]
+        (OperatorMul, Multiplication)
+      , (OperatorQuo, Division)
       ]
 
 aliasedExpression :: Parser AliasedExpression
