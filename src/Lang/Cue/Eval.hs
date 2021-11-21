@@ -5,7 +5,8 @@ module Lang.Cue.Eval
  , disjoin
  ) where
 
-import           Data.List.Extra            (nubOrd)
+import           Data.List.Extra (nubOrd)
+import           Data.Sequence   (Seq (..), (<|), (|>))
 
 import           Lang.Cue.Error
 import           Lang.Cue.Value
@@ -15,40 +16,32 @@ import           Lang.Cue.Value
 -- Internal dispatch for recursive defaults
 
 class Eval a where
-  eUnify   :: a -> a -> a
   eDisjoin :: a -> a -> a
   raise    :: a -> Value
 
 instance Eval Value where
-  eUnify   = handleDefault genericUnify
-  eDisjoin = handleDefault genericDisjoin
+  eDisjoin = disjoin
   raise    = id
 
 instance Eval BaseValue where
-  eUnify   = genericUnify
   eDisjoin = genericDisjoin
   raise    = promote
-
-handleDefault
-  :: (forall v. Eval (CoreValue v) => CoreValue v -> CoreValue v -> CoreValue v)
-  -> (Value -> Value -> Value)
-handleDefault f (WithDefault v1 d1) (WithDefault v2 d2) = WithDefault (f v1 v2) (f d1 d2)
-handleDefault f (WithDefault v1 d1) (demote -> v2)      = WithDefault (f v1 v2) (f d1 v2)
-handleDefault f (demote -> v1)      (WithDefault v2 d2) = WithDefault (f v1 v2) (f v1 d2)
-handleDefault f v1 v2 = f v1 v2
 
 
 --------------------------------------------------------------------------------
 -- Unification
 
 unify :: Value -> Value -> Value
-unify = eUnify
+unify (WithDefault v1 d1) (WithDefault v2 d2) = WithDefault (v1 `genericUnify` v2) (d1 `genericUnify` d2)
+unify (WithDefault v1 d1) (demote -> v2)      = WithDefault (v1 `genericUnify` v2) (d1 `genericUnify` v2)
+unify (demote -> v1)      (WithDefault v2 d2) = WithDefault (v1 `genericUnify` v2) (v1 `genericUnify` d2)
+unify v1 v2 = v1 `genericUnify` v2
 
 genericUnify :: Eval (CoreValue v) => CoreValue v -> CoreValue v -> CoreValue v
 genericUnify = curry \case
   -- distribute over disjunction
-  (Union u, v) -> foldl1 eDisjoin $ (`eUnify` v) <$> u
-  (v, Union u) -> foldl1 eDisjoin $ (v `eUnify`) <$> u
+  (Union u, v) -> foldl1 eDisjoin $ (`genericUnify` v) <$> u
+  (v, Union u) -> foldl1 eDisjoin $ (v `genericUnify`) <$> u
   -- Top is the neutral element
   (Top, v) -> v
   (v, Top) -> v
@@ -59,17 +52,7 @@ genericUnify = curry \case
   (Null, Null) -> Null
   (Null, v   ) -> Bottom $ UnifyWithNull (raise v)
   (v,    Null) -> Bottom $ UnifyWithNull (raise v)
-  -- types do not unify with anything but themselves
-  (Type t1, Type t2)
-    | t1 == t2  -> Type t1
-    | otherwise -> Bottom $ UnifyTypes t1 t2
-  (Type t, v) -> Bottom $ UnifyTypeMismatch (Type t) (raise v)
-  (v, Type t) -> Bottom $ UnifyTypeMismatch (raise v) (Type t)
-  -- atoms do not unify with anything but themselves
-  (Atom a1, Atom a2)
-    | a1 == a2  -> Atom a1
-    | otherwise -> Bottom $ UnifyAtoms a1 a2
-  -- bounds
+  -- bounds unify
   (Bound bx, Bound by) -> case (bx, by) of
     -- matching types
     (IntegerBound b1,  IntegerBound b2) -> Bound $ IntegerBound $ unifyOrderedBounds b1 b2
@@ -83,13 +66,34 @@ genericUnify = curry \case
     (RegexBound   r1,  RegexBound   r2) -> Bound $ RegexBound   $ unifyRegexes r1 r2
     -- non-matching types
     (b1, b2) -> Bottom $ UnifyBounds b1 b2 -- IS THAT CORRECT?
-  -- check values
+  -- atoms do not unify with anything but themselves
+  (Atom a1, Atom a2)
+    | a1 == a2  -> Atom a1
+    | otherwise -> Bottom $ UnifyAtoms a1 a2
+  -- atoms and bounds unify if the value is within the bounds
   (Atom a, Bound b) -> checkBound a b
   (Bound b, Atom a) -> checkBound a b
+  -- atoms and types unify if the value is of that type
+  (Atom a, Type t) -> checkType a t
+  (Type t, Atom a) -> checkType a t
+  -- types do not unify with anything but themselves
+  (Type t1, Type t2)
+    | t1 == t2  -> Type t1
+    | otherwise -> Bottom $ UnifyTypes t1 t2
+  (Type t, v) -> Bottom $ UnifyTypeMismatch (Type t) (raise v)
+  (v, Type t) -> Bottom $ UnifyTypeMismatch (raise v) (Type t)
   -- handled by the calling function
   (WithDefault _ _, _) -> unreachable
   (_, WithDefault _ _) -> unreachable
   where
+    checkType = curry \case
+      (a@(BooleanAtom _), BooleanType) -> Atom a
+      (a@(IntegerAtom _), IntegerType) -> Atom a
+      (  (IntegerAtom i), FloatType)   -> Atom $ FloatAtom $ fromInteger i
+      (a@(FloatAtom   _), FloatType)   -> Atom a
+      (a@(StringAtom  _), StringType)  -> Atom a
+      (a@(BytesAtom   _), BytesType)   -> Atom a
+      (a, t) -> Bottom $ UnifyTypeMismatch (Atom a) (Type t)
     checkBound = curry \case
       (a@(IntegerAtom i), b@(IntegerBound c)) ->
         if checkOrdered c i then Atom a else Bottom $ UnifyOOB a b
@@ -134,7 +138,23 @@ genericUnify = curry \case
 -- Disjunction
 
 disjoin :: Value -> Value -> Value
-disjoin = eDisjoin
+disjoin (WithDefault v1 d1) (WithDefault v2 d2) = WithDefault (v1 `genericDisjoin` v2) (d1 `genericDisjoin` d2)
+disjoin (WithDefault v1 d1) (demote -> v2)      = WithDefault (v1 `genericDisjoin` v2) d1
+disjoin (demote -> v1)      (WithDefault v2 d2) = WithDefault (v1 `genericDisjoin` v2) d2
+disjoin v1 v2 = v1 `genericDisjoin` v2
 
 genericDisjoin :: Eval (CoreValue v) => CoreValue v -> CoreValue v -> CoreValue v
-genericDisjoin = curry undefined
+genericDisjoin = curry \case
+  -- Bottom is the neutral element
+  (Bottom e, _)        -> Bottom e
+  (_, Bottom e)        -> Bottom e
+  -- Top always wins
+  (Top, _)             -> Top
+  (_, Top)             -> Top
+  -- unify disjunctions
+  -- TODO: how does this handle marking defaults?
+  (Union u1, Union u2) -> Union $ u1 <> u2
+  (Union u,  v)        -> Union $ u |> v
+  (v, Union u)         -> Union $ v <| u
+  -- otherwise, just create a new disjunction
+  (u, v)               -> Union $ u :<| pure v
