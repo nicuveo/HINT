@@ -236,7 +236,14 @@ instance Arbitrary Expression where
         i <- chooseInt (0, length l)
         case drop i l of
           []    -> Unary <$> arbitrary
-          (o:r) -> let x = e r (d-1) in o <$> x <*> x <*> listOf x
+          (o:z) -> do
+            l <- e z (d-1)
+            r <- e z (d-1)
+            v <- frequency
+              [ (4, pure [])
+              , (1, pure . Unary <$> arbitrary)
+              ]
+            pure $ o l r v
   shrink = \case
     Unary ue              -> Unary <$> shrink ue
     Multiplication l r vs -> sh Multiplication l r vs
@@ -312,7 +319,7 @@ instance Arbitrary Operand where
       o n = frequency
         [ (2,       OperandLiteral    <$> scale (`div` 2) arbitrary)
         , (2,       OperandName       <$> scale (`div` 2) arbitrary)
-        , (min 1 n, OperandExpression <$> scale (`div` 2) arbitrary)
+        , (min 1 n, OperandExpression <$> scale (`div` 5) arbitrary)
         ]
   shrink = \case
     OperandLiteral    l -> OperandLiteral    <$> shrink l

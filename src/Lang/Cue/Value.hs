@@ -84,6 +84,7 @@ data BottomSource
   | UnifyBounds       Bound Bound
   | UnifyTypeMismatch Value Value
   | UnifyOOB          Atom  Bound
+  | UnsupportedError  Value
   deriving (Show)
 
 

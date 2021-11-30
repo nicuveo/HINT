@@ -26,6 +26,7 @@ library
       Lang.Cue.Error
       Lang.Cue.Eval
       Lang.Cue.Grammar
+      Lang.Cue.Operation
       Lang.Cue.Parser
       Lang.Cue.Printer
       Lang.Cue.Value
@@ -70,6 +71,7 @@ test-suite tests
       Lang.Cue.Error
       Lang.Cue.Eval
       Lang.Cue.Grammar
+      Lang.Cue.Operation
       Lang.Cue.Parser
       Lang.Cue.Printer
       Lang.Cue.Value
