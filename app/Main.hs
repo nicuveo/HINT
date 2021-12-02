@@ -16,6 +16,7 @@ import           Text.Megaparsec.Error
 import           Lang.Cue.Eval
 import           Lang.Cue.Grammar
 import           Lang.Cue.Parser
+import           Lang.Cue.Printer
 
 
 main :: IO ()
@@ -29,20 +30,25 @@ readPrompt = do
        | otherwise -> Just l
 
 evalLine :: String -> IO ()
-evalLine l
-  | all isSpace l = pure ()
-  | otherwise     = void $ runMaybeT $ do
-      liftIO $ putStrLn "# 1. tokens"
-      case run tokenize l of
-        Left e       -> liftIO (putStr e) >> empty
-        Right tokens -> liftIO $ print tokens
-      liftIO $ putStrLn "# 2. ast"
-      e <- case run expression l of
-        Left e  -> liftIO (putStr e) >> empty
-        Right a -> liftIO (prettyPrint a) >> pure a
-      liftIO $ putStrLn "# 3. eval"
-      liftIO $ print $ eval e
-
+evalLine (dropWhile isSpace -> l) = case l of
+  [] -> pure ()
+  (':' : c) -> do
+    let (cmd, dropWhile isSpace -> expr) = break isSpace c
+    case cmd of
+      "?" -> putStrLn "\
+      \:?     print this help\n\
+      \:q     quit this REPL\n\
+      \:tok   tokenize the given expression \n\
+      \:ast   parse and print the AST of the given expression"
+      "tok" -> case run tokenize expr of
+        Left e       -> putStr e
+        Right tokens -> print tokens
+      "ast" -> case run expression expr of
+        Left e  -> putStr e
+        Right a -> prettyPrint a
+  expr -> case run expression l of
+    Left e  -> putStr e
+    Right a -> putStrLn $ toString $ eval a
 
 run :: Parser a -> String -> Either String a
 run p i = left errorBundlePretty $ runParser (p <* eof) "<interactive>" (T.pack i)
