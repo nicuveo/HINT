@@ -1,7 +1,7 @@
 module Lang.Cue.Printer
   ( display
-  , displayStrict
-  , buildString
+  , displayLazy
+  , toString
   ) where
 
 import           Data.Char
@@ -25,11 +25,14 @@ import           Lang.Cue.Grammar
 class Printer a where
   build :: Int -> a -> Builder
 
-display :: Printer a => a -> TL.Text
-display = toLazyText . build 0
+display :: Printer a => a -> T.Text
+display = toStrict . displayLazy
 
-displayStrict :: Printer a => a -> T.Text
-displayStrict = toStrict . display
+displayLazy :: Printer a => a -> TL.Text
+displayLazy = toLazyText . build 0
+
+toString :: Printer a => a -> String
+toString = TL.unpack . displayLazy
 
 
 --------------------------------------------------------------------------------

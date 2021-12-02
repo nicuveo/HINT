@@ -108,7 +108,7 @@ testRoundTrips = testGroup "round trip"
   ]
 
 roundTrip n p = testProperty n \x ->
-  runParser (p <* eof) "" (displayStrict x) == Right x
+  runParser (p <* eof) "" (display x) == Right x
 
 
 --------------------------------------------------------------------------------
@@ -127,4 +127,4 @@ checkFile name = do
   ast <- case runParser sourceFile fileNameIn inFile of
     Right result -> pure result
     Left  err    -> assertFailure $ errorBundlePretty err
-  outFile @=? displayStrict ast
+  outFile @=? display ast
