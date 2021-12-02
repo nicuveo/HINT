@@ -182,6 +182,9 @@ token = label "token" $ choice
   , fail "did not find a valid token"
   ]
 
+tokenize :: Parser [Token]
+tokenize = token `manyTill` eof
+
 
 --------------------------------------------------------------------------------
 -- Parser
