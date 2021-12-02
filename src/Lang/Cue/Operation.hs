@@ -154,8 +154,9 @@ evalDisjunction v1 v2 = v1 `disjoin` v2
 disjoin :: Eval (CoreValue v) => CoreValue v -> CoreValue v -> CoreValue v
 disjoin = curry \case
   -- Bottom is the neutral element
-  (Bottom e, _)        -> Bottom e
-  (_, Bottom e)        -> Bottom e
+  (Bottom e, Bottom _) -> Bottom e
+  (Bottom _, v)        -> v
+  (v, Bottom _)        -> v
   -- Top always wins
   (Top, _)             -> Top
   (_, Top)             -> Top
