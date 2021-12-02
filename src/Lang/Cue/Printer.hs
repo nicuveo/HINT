@@ -5,18 +5,21 @@ module Lang.Cue.Printer
   ) where
 
 import           Data.Char
+import           Data.Foldable          (toList)
 import           Data.Functor           ((<&>))
 import           Data.List              (intersperse)
 import qualified Data.List              as L
 import qualified Data.List.NonEmpty     as NE
-import           Data.Maybe             (maybeToList)
+import           Data.Maybe             (catMaybes, maybeToList)
 import           Data.Text              (Text)
 import qualified Data.Text              as T
 import           Data.Text.Lazy         (toStrict)
 import qualified Data.Text.Lazy         as TL
 import           Data.Text.Lazy.Builder
+import           Data.Void
 
 import           Lang.Cue.Grammar
+import           Lang.Cue.Value
 
 
 --------------------------------------------------------------------------------
@@ -288,6 +291,61 @@ instance Printer ListLiteral where
     where
       indent = fromString $ replicate (2*i) ' '
 
+
+--------------------------------------------------------------------------------
+-- Value
+
+instance Printer Void where
+  build = const absurd
+
+instance Printer v => Printer (CoreValue v) where
+  build i = \case
+    Type t -> case t of
+      BooleanType  -> "bool"
+      IntegerType  -> "int"
+      FloatType    -> "float"
+      StringType   -> "string"
+      BytesType    -> "bytes"
+      StructType n -> build i n
+    Atom a -> case a of
+      BooleanAtom b -> build i b
+      IntegerAtom n -> build i n
+      FloatAtom   f -> build i f
+      StringAtom  t -> buildText t
+      BytesAtom   t -> buildText t
+    Bound b -> case b of
+      IntegerBound o -> buildOrdered (build i) o
+      FloatBound   o -> buildOrdered (build i) o
+      StringBound  o -> buildOrdered (buildText) o
+      BytesBound   o -> buildOrdered (buildText) o
+      RegexBound   m -> unify i $ m <&> \(p, e) ->
+        if e
+        then "=~ \"" <> encodeText p <> "\""
+        else "!~ \"" <> encodeText p <> "\""
+    Bottom _ -> "_|_" -- FIXME: print reason?
+    Top -> "_"
+    Null -> "null"
+    Union values -> disjoin i $ toList values
+    Function identifier -> build i identifier
+    WithDefault v d -> "⟨" <> build i v <> ", " <> build i d <> "⟩"
+    where
+      buildText t = "\"" <> encodeText t <> "\""
+      buildOrdered :: (a -> Builder) -> OrderedBound a -> Builder
+      buildOrdered f (OrderedBound l u d) = unify i $ concat
+        [ catMaybes
+          [ case l of
+            Open        -> Nothing
+            Inclusive a -> Just $ ">= " <> f a
+            Exclusive a -> Just $ "> "  <> f a
+          , case u of
+            Open        -> Nothing
+            Inclusive a -> Just $ "<= " <> f a
+            Exclusive a -> Just $ "< "  <> f a
+          ]
+        , d <&> \a -> "!= " <> f a
+        ]
+
+
 --------------------------------------------------------------------------------
 -- Helpers
 
@@ -301,6 +359,12 @@ makeBlock i l   = mconcat
   , "}"
   ]
   where indent = fromString $ replicate (2*i) ' '
+
+unify :: Printer a => Int -> [a] -> Builder
+unify i = mconcat . intersperse " & " . map (build i)
+
+disjoin :: Printer a => Int -> [a] -> Builder
+disjoin i = mconcat . intersperse " | " . map (build i)
 
 withCommas :: Printer a => Int -> [a] -> Builder
 withCommas i = mconcat . intersperse ", " . map (build i)
