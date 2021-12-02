@@ -41,6 +41,7 @@ packages:
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a
 
 extra-deps: []
+#  - readline-1.0.3.0@sha256:db011062b90fbfbbc8b02666d835742c1d4de1f990a89fc056ef8082f3e3cba0,912
 #  - text-display-0.0.1.0@sha256:457d34485a14c8c2959e8312ef96d915338fa2b891fbe7379d5f83a2193da96f,1785
 #  - bytestring-0.11.1.0@sha256:84a15ec06aca21c4af8772a0e847fdda1b58235b801774dd205edb03bfeb8518,7631
 

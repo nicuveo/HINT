@@ -56,10 +56,12 @@ library
       base >=4.7 && <5
     , containers
     , extra
+    , haskeline
     , megaparsec
     , monad-loops
     , mtl
     , text
+    , transformers
     , unordered-containers
     , vector
   default-language: Haskell2010
@@ -92,10 +94,12 @@ executable evalexpr
     , base >=4.7 && <5
     , containers
     , extra
+    , haskeline
     , megaparsec
     , monad-loops
     , mtl
     , text
+    , transformers
     , unordered-containers
     , vector
   default-language: Haskell2010
@@ -138,6 +142,7 @@ test-suite tests
       base >=4.7 && <5
     , containers
     , extra
+    , haskeline
     , megaparsec
     , monad-loops
     , mtl
@@ -145,6 +150,7 @@ test-suite tests
     , tasty-hunit
     , tasty-quickcheck
     , text
+    , transformers
     , unordered-containers
     , vector
   default-language: Haskell2010

@@ -15,10 +15,12 @@ dependencies:
  - base >= 4.7 && < 5
  - containers
  - extra
+ - haskeline
  - megaparsec
  - monad-loops
  - mtl
  - text
+ - transformers
  - unordered-containers
  - vector
 
