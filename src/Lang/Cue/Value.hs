@@ -2,8 +2,8 @@ module Lang.Cue.Value where
 
 import           Data.HashMap.Strict
 import           Data.Maybe
-import           Data.Sequence              (Seq)
-import           Data.Text                  (Text)
+import           Data.Sequence       (Seq)
+import           Data.Text           (Text)
 import           Data.Void
 
 import           Lang.Cue.Error
@@ -23,7 +23,8 @@ data CoreValue v
   | Null
 -- | ClosedList [CoreValue v]
 -- | OpenList   [CoreValue v] (CoreValue v)
-  | Union (Seq (CoreValue v))
+  | Union (Seq (CoreValue v)) -- TODO: come up with a better name?
+  | Function Identifier
   | WithDefault v v
   deriving (Show, Functor, Foldable, Traversable)
 
@@ -79,11 +80,12 @@ demote = fromMaybe (panic DemoteBaseValue) . traverse (const Nothing)
 data BottomSource
   = ArisedFromLiteral
   | UnifyWithNull     Value
-  | UnifyTypes        Type  Type
-  | UnifyAtoms        Atom  Atom
-  | UnifyBounds       Bound Bound
-  | UnifyTypeMismatch Value Value
-  | UnifyOOB          Atom  Bound
+  | UnifyTypes        Type       Type
+  | UnifyFunctions    Identifier Identifier
+  | UnifyAtoms        Atom       Atom
+  | UnifyBounds       Bound      Bound
+  | UnifyTypeMismatch Value      Value
+  | UnifyOOB          Atom       Bound
   | UnsupportedError  Value
   deriving (Show)
 

@@ -92,6 +92,12 @@ evalUnification = distribute2 genericUnify
         | otherwise -> Bottom $ UnifyTypes t1 t2
       (Type t, v) -> Bottom $ UnifyTypeMismatch (Type t) (raise v)
       (v, Type t) -> Bottom $ UnifyTypeMismatch (raise v) (Type t)
+      -- functions do not unify with anything but themselves
+      (Function f1, Function f2)
+        | f1 == f2  -> Function f1
+        | otherwise -> Bottom $ UnifyFunctions f1 f2
+      (Function f, v) -> Bottom $ UnifyTypeMismatch (Function f) (raise v)
+      (v, Function f) -> Bottom $ UnifyTypeMismatch (raise v) (Function f)
       -- handled by the calling function
       (WithDefault _ _, _) -> unreachable
       (_, WithDefault _ _) -> unreachable
