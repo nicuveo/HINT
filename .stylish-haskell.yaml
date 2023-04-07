@@ -392,8 +392,8 @@ steps:
       # sub-groups based on the first component of the module name.
       #
       # Default: [{ "match" : ".*", "sub_group": "^[^.]+" }]
-      group_rules:
-        - match: "^\\(Lang.Cue\\){0}"
+      # group_rules:
+      #   - match: "(Lang\\.Cue){0}"
 
   # Language pragmas
   - language_pragmas:
