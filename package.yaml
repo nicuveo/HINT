@@ -4,57 +4,94 @@ github:              "nicuveo/HINT"
 license:             TBD
 author:              "Antoine Leblanc"
 maintainer:          "nicuveo@gmail.com"
-copyright:           "2021 Antoine Leblanc"
+copyright:           "2023 Antoine Leblanc"
 
 extra-source-files:
 - README.md
 
 description:         Please see the README on GitHub at <https://github.com/nicuveo/HINT#readme>
 
-dependencies:
- - base >= 4.7 && < 5
- - containers
- - extra
- - haskeline
- - megaparsec
- - monad-loops
- - mtl
- - text
- - transformers
- - unordered-containers
- - vector
+ghc-options:
+  - -Wcompat
+  - -Werror
+  - -Weverything
+  # everything includes a bit too much: disable unrequired ones
+  - -Wno-all-missed-specialisations
+  - -Wno-implicit-prelude
+  - -Wno-missed-specialisations
+  - -Wno-missing-deriving-strategies
+  - -Wno-missing-export-lists
+  - -Wno-missing-exported-signatures
+  - -Wno-missing-import-lists
+  - -Wno-missing-kind-signatures
+  - -Wno-missing-local-signatures
+  - -Wno-missing-safe-haskell-mode
+  - -Wno-monomorphism-restriction
+  - -Wno-safe
+  - -Wno-unsafe
+  # turn on additional features
+  - -fwarn-tabs
 
 default-extensions:
- - BlockArguments
- - ConstraintKinds
- - DeriveFoldable
- - DeriveFunctor
- - DeriveTraversable
- - FlexibleContexts
- - FlexibleInstances
- - LambdaCase
- - MultiWayIf
- - OverloadedStrings
- - ScopedTypeVariables
- - StrictData
- - TupleSections
- - TypeApplications
- - TypeFamilies
- - ViewPatterns
+  - AllowAmbiguousTypes
+  - BangPatterns
+  - BlockArguments
+  - ConstraintKinds
+  - DataKinds
+  - DefaultSignatures
+  - DeriveDataTypeable
+  - DeriveFoldable
+  - DeriveFunctor
+  - DeriveGeneric
+  - DeriveLift
+  - DeriveTraversable
+  - DerivingVia
+  - FlexibleContexts
+  - FlexibleInstances
+  - FunctionalDependencies
+  - GADTs
+  - GeneralizedNewtypeDeriving
+  - ImportQualifiedPost
+  - InstanceSigs
+  - LambdaCase
+  - MultiParamTypeClasses
+  - MultiWayIf
+  - NamedFieldPuns
+  - OverloadedStrings
+  - PackageImports
+  - RankNTypes
+  - RecordWildCards
+  - RoleAnnotations
+  - ScopedTypeVariables
+  - StandaloneDeriving
+  - StrictData
+  - TupleSections
+  - TypeApplications
+  - TypeFamilies
+  - TypeOperators
+  - ViewPatterns
+
+dependencies:
+ - base
+ - megaparsec
+ - text
+
+library:
+  source-dirs: src
+  dependencies:
+    - containers
+    - extra
+    - unordered-containers
 
 executables:
   evalexpr:
     main: Main.hs
     source-dirs: app
-    dependencies: HINT
-
-library:
-  source-dirs: src
-  ghc-options:
-    - -Wall
-    - -Werror
-    - -fwarn-tabs
-    - -fno-warn-unused-do-bind
+    dependencies:
+      - HINT
+      - haskeline
+      - monad-loops
+      - mtl
 
 tests:
   tests:
