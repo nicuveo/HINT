@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-unused-do-bind #-}
+
 module Lang.Cue.Parser where
 
 import Prelude                    hiding (exponent)
@@ -135,7 +137,7 @@ operator expected = do
   (op, autoComma) <- try $ do
     (op, autoComma) <- nextOperator
     unless (op == expected) $
-      fail $ "expected " <> show expected <>  ", got "<> show op
+      fail $ "expected " <> show expected <>  ", got " <> show op
     pure (op, autoComma)
   skipToNextToken autoComma
   pure op
@@ -697,7 +699,7 @@ postProcess l = case foldr fuse [] l of
   [InterpolationString t] -> Right t
   heterogeneousList       -> Left heterogeneousList
   where
-    fuse (InterpolationString t1) (InterpolationString t2 : r) = InterpolationString (t1<>t2) : r
+    fuse (InterpolationString t1) (InterpolationString t2 : r) = InterpolationString (t1 <> t2) : r
     fuse x r = x : r
 
 structLiteral :: Parser [Declaration]

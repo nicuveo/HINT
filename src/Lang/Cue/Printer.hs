@@ -277,15 +277,15 @@ instance Printer ListLiteral where
     ClosedList []    -> "[]"
     ClosedList [x]   -> "[" <> build i x <> "]"
     ClosedList (x:r) -> mconcat
-      [ "[ " <> build (i+1) x <> ",\n" <> indent
-      , mconcat $ r <&> \y -> "  " <> build (i+1) y <> ",\n" <> indent
+      [ "[ " <> build (i + 1) x <> ",\n" <> indent
+      , mconcat $ r <&> \y -> "  " <> build (i + 1) y <> ",\n" <> indent
       , "]"
       ]
     OpenList []    ell -> "[" <> build i ell <> "]"
     OpenList (x:r) ell -> mconcat
-      [ "[ " <> build (i+1) x <> ",\n" <> indent
-      , mconcat $ r <&> \y -> "  " <> build (i+1) y <> ",\n" <> indent
-      , "  " <> build (i+1) ell <> ",\n" <> indent
+      [ "[ " <> build (i + 1) x <> ",\n" <> indent
+      , mconcat $ r <&> \y -> "  " <> build (i + 1) y <> ",\n" <> indent
+      , "  " <> build (i + 1) ell <> ",\n" <> indent
       , "]"
       ]
     where
@@ -354,7 +354,7 @@ makeBlock _ []  = "{}"
 makeBlock i [x] = "{" <> build i x <> "}"
 makeBlock i l   = mconcat
   [ "{\n"
-  , mconcat $ l <&> \x -> indent <> "  " <> build (i+1) x <> ",\n"
+  , mconcat $ l <&> \x -> indent <> "  " <> build (i + 1) x <> ",\n"
   , indent
   , "}"
   ]

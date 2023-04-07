@@ -157,7 +157,7 @@ evalDisjunction (WithDefault v1 d1) (demote -> v2)      = WithDefault (v1 `disjo
 evalDisjunction (demote -> v1)      (WithDefault v2 d2) = WithDefault (v1 `disjoin` v2) d2
 evalDisjunction v1 v2 = v1 `disjoin` v2
 
-disjoin :: Eval (CoreValue v) => CoreValue v -> CoreValue v -> CoreValue v
+disjoin :: CoreValue v -> CoreValue v -> CoreValue v
 disjoin = curry \case
   -- Bottom is the neutral element
   (Bottom e, Bottom _) -> Bottom e

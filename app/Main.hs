@@ -37,12 +37,13 @@ evalLine (dropWhile isSpace -> l) = case l of
       \:tok   tokenize the given expression \n\
       \:ast   parse and print the AST of the given expression"
       "tok" -> case run tokenize expr of
-        Left e       -> putStr e
-        Right tokens -> print tokens
+        Left e    -> putStr e
+        Right tks -> print tks
       "ast" -> case run expression expr of
         Left e  -> putStr e
         Right a -> prettyPrint a
-  expr -> case run expression l of
+      _ -> undefined
+  _ -> case run expression l of
     Left e  -> putStr e
     Right a -> putStrLn $ toString $ eval a
 
@@ -78,7 +79,7 @@ prettyPrint = go 0
     pB :: Int -> String -> [Expression] -> IO ()
     pB n o es = do
       putStrLn o
-      for_ es $ go (n+1)
+      for_ es $ go (n + 1)
     pU :: Int -> UnaryExpression -> IO ()
     pU n (UnaryExpression o e) = putStr (show o ++ " ") >> pP n e
     pP :: Int -> PrimaryExpression -> IO ()
@@ -86,8 +87,8 @@ prettyPrint = go 0
       PrimaryOperand o    -> pO n o
       PrimarySelector e i -> do
         putStrLn "selection"
-        indent (n+1) >> putStr "expr: " >> pP (n+1) e
-        indent (n+1) >> putStr "seln: " >> putStrLn (show i)
+        indent (n + 1) >> putStr "expr: " >> pP (n + 1) e
+        indent (n + 1) >> putStr "seln: " >> putStrLn (show i)
       _ -> putStrLn "TODO"
     pO :: Int -> Operand -> IO ()
     pO n = \case
