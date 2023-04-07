@@ -1,18 +1,20 @@
-import           Control.Monad.IO.Class
-import           Data.Functor
-import           Data.List.NonEmpty
-import qualified Data.Text              as T
-import qualified Data.Text.IO           as T
-import           Test.Tasty
-import           Test.Tasty.HUnit
-import           Test.Tasty.QuickCheck
-import           Text.Megaparsec        hiding (Label, token)
+module Main where
 
-import           Lang.Cue.Grammar
-import           Lang.Cue.Parser
-import           Lang.Cue.Printer
+import Control.Monad.IO.Class
+import Data.Functor
+import Data.List.NonEmpty
+import Data.Text              qualified as T
+import Data.Text.IO           qualified as T
+import Test.Tasty
+import Test.Tasty.HUnit
+import Test.Tasty.QuickCheck
+import Text.Megaparsec        hiding (Label, token)
 
-import           Arbitrary
+import Lang.Cue.Grammar
+import Lang.Cue.Parser
+import Lang.Cue.Printer
+
+import Arbitrary
 
 
 --------------------------------------------------------------------------------

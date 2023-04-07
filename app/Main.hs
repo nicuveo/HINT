@@ -1,22 +1,18 @@
-import           Control.Applicative       ((<$>))
-import           Control.Arrow             (left)
-import           Control.Monad
-import           Control.Monad.IO.Class
-import           Control.Monad.Loops
-import           Control.Monad.Trans       (lift)
-import           Control.Monad.Trans.Maybe
-import           Data.Char
-import           Data.Foldable
-import qualified Data.Text                 as T
-import           System.Console.Haskeline
-import           System.IO
-import           Text.Megaparsec           hiding (token)
-import           Text.Megaparsec.Error
+module Main where
 
-import           Lang.Cue.Eval
-import           Lang.Cue.Grammar
-import           Lang.Cue.Parser
-import           Lang.Cue.Printer
+import Control.Arrow            (left)
+import Control.Monad.Loops
+import Control.Monad.Trans      (lift)
+import Data.Char
+import Data.Foldable
+import Data.Text                qualified as T
+import System.Console.Haskeline
+import Text.Megaparsec          hiding (token)
+
+import Lang.Cue.Eval
+import Lang.Cue.Grammar
+import Lang.Cue.Parser
+import Lang.Cue.Printer
 
 
 main :: IO ()

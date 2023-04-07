@@ -1,22 +1,22 @@
 module Lang.Cue.Parser where
 
-import           Prelude                    hiding (exponent)
+import Prelude                    hiding (exponent)
 
-import           Control.Monad
-import           Data.Char
-import           Data.Functor               ((<&>))
-import qualified Data.List                  as L
-import           Data.List.NonEmpty         (NonEmpty (..))
-import           Data.Maybe
-import           Data.Text                  (Text)
-import qualified Data.Text                  as T
-import           Data.Void
-import           Text.Megaparsec            hiding (Label, Token, token)
-import           Text.Megaparsec.Char
-import qualified Text.Megaparsec.Char.Lexer as L
+import Control.Monad
+import Data.Char
+import Data.Functor               ((<&>))
+import Data.List                  qualified as L
+import Data.List.NonEmpty         (NonEmpty (..))
+import Data.Maybe
+import Data.Text                  (Text)
+import Data.Text                  qualified as T
+import Data.Void
+import Text.Megaparsec            hiding (Label, Token, token)
+import Text.Megaparsec.Char
+import Text.Megaparsec.Char.Lexer qualified as L
 
-import           Lang.Cue.Error
-import           Lang.Cue.Grammar
+import Lang.Cue.Error
+import Lang.Cue.Grammar
 
 
 --------------------------------------------------------------------------------

@@ -4,22 +4,22 @@ module Lang.Cue.Printer
   , toString
   ) where
 
-import           Data.Char
-import           Data.Foldable          (toList)
-import           Data.Functor           ((<&>))
-import           Data.List              (intersperse)
-import qualified Data.List              as L
-import qualified Data.List.NonEmpty     as NE
-import           Data.Maybe             (catMaybes, maybeToList)
-import           Data.Text              (Text)
-import qualified Data.Text              as T
-import           Data.Text.Lazy         (toStrict)
-import qualified Data.Text.Lazy         as TL
-import           Data.Text.Lazy.Builder
-import           Data.Void
+import Data.Char
+import Data.Foldable          (toList)
+import Data.Functor           ((<&>))
+import Data.List              (intersperse)
+import Data.List              qualified as L
+import Data.List.NonEmpty     qualified as NE
+import Data.Maybe             (catMaybes, maybeToList)
+import Data.Text              (Text)
+import Data.Text              qualified as T
+import Data.Text.Lazy         (toStrict)
+import Data.Text.Lazy         qualified as TL
+import Data.Text.Lazy.Builder
+import Data.Void
 
-import           Lang.Cue.Grammar
-import           Lang.Cue.Value
+import Lang.Cue.Grammar
+import Lang.Cue.Value
 
 
 --------------------------------------------------------------------------------

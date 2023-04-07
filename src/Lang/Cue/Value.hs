@@ -1,13 +1,13 @@
 module Lang.Cue.Value where
 
-import           Data.HashMap.Strict
-import           Data.Maybe
-import           Data.Sequence       (Seq)
-import           Data.Text           (Text)
-import           Data.Void
+import Data.HashMap.Strict
+import Data.Maybe
+import Data.Sequence       (Seq)
+import Data.Text           (Text)
+import Data.Void
 
-import           Lang.Cue.Error
-import           Lang.Cue.Grammar
+import Lang.Cue.Error
+import Lang.Cue.Grammar
 
 
 --------------------------------------------------------------------------------

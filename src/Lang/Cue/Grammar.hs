@@ -1,13 +1,13 @@
 module Lang.Cue.Grammar where
 
-import           Control.Applicative
-import           Control.Monad
-import           Data.Char
-import           Data.List.NonEmpty  (NonEmpty (..))
-import           Data.Maybe
-import           Data.String
-import           Data.Text           (Text)
-import qualified Data.Text           as T
+import Control.Applicative
+import Control.Monad
+import Data.Char
+import Data.List.NonEmpty  (NonEmpty (..))
+import Data.Maybe
+import Data.String
+import Data.Text           (Text)
+import Data.Text           qualified as T
 
 
 --------------------------------------------------------------------------------

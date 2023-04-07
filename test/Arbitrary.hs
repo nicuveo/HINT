@@ -2,14 +2,14 @@
 
 module Arbitrary where
 
-import           Control.Monad
-import           Data.List.NonEmpty    (NonEmpty (..))
-import qualified Data.List.NonEmpty    as NE
-import           Data.Text             (Text)
-import qualified Data.Text             as T
-import           Test.Tasty.QuickCheck
+import Control.Monad
+import Data.List.NonEmpty    (NonEmpty (..))
+import Data.List.NonEmpty    qualified as NE
+import Data.Text             (Text)
+import Data.Text             qualified as T
+import Test.Tasty.QuickCheck
 
-import           Lang.Cue.Grammar
+import Lang.Cue.Grammar
 
 
 --------------------------------------------------------------------------------

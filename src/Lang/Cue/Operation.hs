@@ -1,28 +1,28 @@
 {-# LANGUAGE RankNTypes #-}
 
 module Lang.Cue.Operation
- ( evalUnification
- , evalDisjunction
- , evalUnaryPlus
- , evalUnaryMinus
- , evalAddition
- , evalSubtraction
- , evalMultiplication
- , evalDivision
- , evalEqual
- , evalNotEqual
- , evalLessThan
- , evalLessOrEqual
- , evalGreaterThan
- , evalGreaterOrEqual
- , evalNot
- ) where
+  ( evalUnification
+  , evalDisjunction
+  , evalUnaryPlus
+  , evalUnaryMinus
+  , evalAddition
+  , evalSubtraction
+  , evalMultiplication
+  , evalDivision
+  , evalEqual
+  , evalNotEqual
+  , evalLessThan
+  , evalLessOrEqual
+  , evalGreaterThan
+  , evalGreaterOrEqual
+  , evalNot
+  ) where
 
-import           Data.List.Extra (nubOrd)
-import           Data.Sequence   (Seq (..), (<|), (|>))
+import Data.List.Extra (nubOrd)
+import Data.Sequence   (Seq (..), (<|), (|>))
 
-import           Lang.Cue.Error
-import           Lang.Cue.Value
+import Lang.Cue.Error
+import Lang.Cue.Value
 
 
 --------------------------------------------------------------------------------
@@ -287,7 +287,7 @@ evalNot = distribute1 \case
 
 distribute1 :: (forall v. Eval (CoreValue v) => CoreValue v -> CoreValue v) -> Value -> Value
 distribute1 f (WithDefault v d) = WithDefault (f v) (f d)
-distribute1 f v = f v
+distribute1 f v                 = f v
 
 distribute2 :: (forall v. Eval (CoreValue v) => CoreValue v -> CoreValue v -> CoreValue v) -> Value -> Value -> Value
 distribute2 f (WithDefault v1 d1) (WithDefault v2 d2) = WithDefault (v1 `f` v2) (d1 `f` d2)

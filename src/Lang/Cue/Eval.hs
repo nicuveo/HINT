@@ -1,12 +1,10 @@
-module Lang.Cue.Eval
- ( eval
- ) where
+module Lang.Cue.Eval (eval) where
 
-import           Prelude         hiding (product, sum, negate)
+import Prelude            hiding (negate, product, sum)
 
-import           Lang.Cue.Value
-import           Lang.Cue.Grammar
-import           Lang.Cue.Operation
+import Lang.Cue.Grammar
+import Lang.Cue.Operation
+import Lang.Cue.Value
 
 
 --------------------------------------------------------------------------------
