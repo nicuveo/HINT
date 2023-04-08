@@ -18,6 +18,8 @@ module Lang.Cue.Operation
   , evalNot
   ) where
 
+import "this" Prelude
+
 import Data.List.Extra (nubOrd)
 import Data.Sequence   (Seq (..), (<|), (|>))
 

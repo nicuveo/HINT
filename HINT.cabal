@@ -26,12 +26,14 @@ library
       Lang.Cue.Error
       Lang.Cue.Eval
       Lang.Cue.Grammar
+      Lang.Cue.Lexer
       Lang.Cue.Operation
       Lang.Cue.Parser
       Lang.Cue.Printer
+      Lang.Cue.Tokens
       Lang.Cue.Value
   other-modules:
-      Paths_HINT
+      Prelude
   hs-source-dirs:
       src
   default-extensions:
@@ -59,6 +61,7 @@ library
       MultiParamTypeClasses
       MultiWayIf
       NamedFieldPuns
+      NoImplicitPrelude
       OverloadedStrings
       PackageImports
       RankNTypes
@@ -113,6 +116,7 @@ executable evalexpr
       MultiParamTypeClasses
       MultiWayIf
       NamedFieldPuns
+      NoImplicitPrelude
       OverloadedStrings
       PackageImports
       RankNTypes
@@ -144,10 +148,13 @@ test-suite tests
       Lang.Cue.Error
       Lang.Cue.Eval
       Lang.Cue.Grammar
+      Lang.Cue.Lexer
       Lang.Cue.Operation
       Lang.Cue.Parser
       Lang.Cue.Printer
+      Lang.Cue.Tokens
       Lang.Cue.Value
+      Prelude
       Arbitrary
       Paths_HINT
   hs-source-dirs:
@@ -178,6 +185,7 @@ test-suite tests
       MultiParamTypeClasses
       MultiWayIf
       NamedFieldPuns
+      NoImplicitPrelude
       OverloadedStrings
       PackageImports
       RankNTypes

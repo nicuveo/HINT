@@ -2,17 +2,12 @@
 
 module Lang.Cue.Parser where
 
-import Prelude                    hiding (exponent)
+import "this" Prelude             hiding (exponent)
 
-import Control.Monad
 import Data.Char
-import Data.Functor               ((<&>))
 import Data.List                  qualified as L
 import Data.List.NonEmpty         (NonEmpty (..))
-import Data.Maybe
-import Data.Text                  (Text)
 import Data.Text                  qualified as T
-import Data.Void
 import Text.Megaparsec            hiding (Label, Token, token)
 import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as L

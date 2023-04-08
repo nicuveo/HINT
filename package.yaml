@@ -57,6 +57,7 @@ default-extensions:
   - MultiParamTypeClasses
   - MultiWayIf
   - NamedFieldPuns
+  - NoImplicitPrelude
   - OverloadedStrings
   - PackageImports
   - RankNTypes
@@ -78,6 +79,8 @@ dependencies:
 
 library:
   source-dirs: src
+  other-modules:
+    - Prelude
   dependencies:
     - containers
     - extra

@@ -1,10 +1,8 @@
 module Lang.Cue.Value where
 
-import Data.HashMap.Strict
-import Data.Maybe
-import Data.Sequence       (Seq)
-import Data.Text           (Text)
-import Data.Void
+import "this" Prelude
+
+import Data.Sequence    (Seq)
 
 import Lang.Cue.Error
 import Lang.Cue.Grammar

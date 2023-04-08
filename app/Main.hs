@@ -1,5 +1,7 @@
 module Main where
 
+import Prelude
+
 import Control.Arrow            (left)
 import Control.Monad.Loops
 import Control.Monad.Trans      (lift)

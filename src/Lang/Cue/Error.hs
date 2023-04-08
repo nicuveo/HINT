@@ -1,5 +1,7 @@
 module Lang.Cue.Error where
 
+import "this" Prelude
+
 
 --------------------------------------------------------------------------------
 -- Panic
