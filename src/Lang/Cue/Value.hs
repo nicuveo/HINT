@@ -2,10 +2,9 @@ module Lang.Cue.Value where
 
 import "this" Prelude
 
-import Data.Sequence    (Seq)
-
 import Lang.Cue.Error
 import Lang.Cue.Grammar
+import Lang.Cue.Tokens
 
 
 --------------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 module Lang.Cue.Lexer (tokenize) where
 
-import "this" Prelude hiding (exponent)
+import "this" Prelude             hiding (exponent)
 
 import Data.Char
 import Data.Text                  qualified as T

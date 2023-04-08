@@ -26,10 +26,12 @@ import Data.HashSet        as P (HashSet)
 import Data.List           as P (find, findIndex, foldl', group, intercalate,
                                  intersect, lookup, sort, sortBy, sortOn, union,
                                  unionBy, (\\))
+import Data.List.NonEmpty  as P (NonEmpty (..), nonEmpty)
 import Data.Maybe          as P (catMaybes, fromMaybe, isJust, isNothing,
                                  listToMaybe, maybeToList)
 import Data.Ord            as P (comparing)
 import Data.Semigroup      as P (Semigroup (..))
+import Data.Sequence       as P (Seq)
 import Data.String         as P (IsString)
 import Data.Text           as P (Text)
 import Data.Traversable    as P (for)
