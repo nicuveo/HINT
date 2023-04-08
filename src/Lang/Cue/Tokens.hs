@@ -91,8 +91,8 @@ data Operator
   deriving (Show, Eq, Ord, Enum, Bounded)
 
 data Attribute = Attribute
-  { attributeName   :: Identifier
-  , attributeTokens :: [Token]
+  { attributeName :: Identifier
+  , attributeText :: Text
   }
   deriving (Show, Eq)
 

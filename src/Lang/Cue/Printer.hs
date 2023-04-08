@@ -16,6 +16,7 @@ import Data.Text.Lazy         qualified as TL
 import Data.Text.Lazy.Builder
 
 import Lang.Cue.Grammar
+import Lang.Cue.Tokens
 import Lang.Cue.Value
 
 
@@ -123,15 +124,8 @@ instance Printer Operator where
     OperatorBottom        -> "_|_"
 
 instance Printer Attribute where
-  build i (Attribute name tokens) =
-    "@" <> build i name <> "(" <> withSpaces i tokens <> ")"
-
-instance Printer AttributeToken where
-  build i = \case
-    AttributeToken    t  -> build i t
-    AttributeParens   ts -> "( " <> withSpaces i ts <> ")"
-    AttributeBraces   ts -> "{ " <> withSpaces i ts <> "}"
-    AttributeBrackets ts -> "[ " <> withSpaces i ts <> "]"
+  build i (Attribute name raw) =
+    "@" <> build i name <> "(" <> fromText raw <> ")"
 
 instance Printer InterpolationElement where
   build i = \case

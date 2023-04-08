@@ -10,6 +10,7 @@ import Text.Megaparsec            hiding (Label, Token, token)
 import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as L
 
+import Lang.Cue.Printer           (display)
 import Lang.Cue.Tokens
 
 
@@ -86,7 +87,8 @@ attribute = do
   char '('
   toks <- init <$> attrTokens [OperatorParensClose]
   skipToNextToken True
-  pure $ Attribute (Identifier name) toks
+  -- convert the tokens back to Text
+  pure $ Attribute (Identifier name) (display toks)
   where
     attrTokens closing = case closing of
       []         -> pure []
