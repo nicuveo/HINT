@@ -2,8 +2,8 @@ module Lang.Cue.Value where
 
 import "this" Prelude
 
+import Lang.Cue.AST
 import Lang.Cue.Error
-import Lang.Cue.Grammar
 import Lang.Cue.Tokens
 
 

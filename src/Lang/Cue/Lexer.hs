@@ -6,11 +6,12 @@ import "this" Prelude             hiding (exponent)
 
 import Data.Char
 import Data.Text                  qualified as T
-import Text.Megaparsec            hiding (Label, Token, token)
+import Text.Megaparsec            hiding (Label, ParseError, Token, token)
 import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as L
 
-import Lang.Cue.Printer           (display)
+import Lang.Cue.Error
+import Lang.Cue.Location          hiding (getOffset)
 import Lang.Cue.Tokens
 
 
@@ -20,25 +21,25 @@ import Lang.Cue.Tokens
 tokenize
   :: String -- file name
   -> Text   -- raw input
-  -> Either String [Token]
-tokenize = left errorBundlePretty ... parse (skipToNextToken False *> many token <* eof)
+  -> Either ParseError [Token WithOffset]
+tokenize = left undefined ... parse (skipToNextToken False *> many token <* eof)
 
 
 --------------------------------------------------------------------------------
 -- * Tokens
 
-token :: Lexer Token
+token :: Lexer (Token WithOffset)
 token = label "token" $ choice
   [ TokenOperator <$> operator
   , TokenAttribute <$> attribute
-  , either TokenKeyword TokenIdentifier <$> identifierOrKeyword
-  , either TokenInterpolation TokenString <$> stringLiteral
-  , either TokenFloat TokenInteger <$> numberLiteral
+  , either TokenKeyword TokenIdentifier   . flipE <$> identifierOrKeyword
+  , either TokenInterpolation TokenString . flipE <$> stringLiteral
+  , either TokenFloat TokenInteger        . flipE <$> numberLiteral
   , fail "did not find a valid token"
   ]
 
-operator :: Lexer Operator
-operator = do
+operator :: Lexer (WithOffset Operator)
+operator = label "operator" $ addOffset do
   (op, autoComma) <- choice
     [ (OperatorEOFComma,      False) <$ eof
     , (OperatorRealComma,     False) <$ char ','
@@ -80,35 +81,41 @@ operator = do
   pure op
 
 -- | Parses an attribute, and skips subsequent space.
-attribute :: Lexer Attribute
-attribute = do
+attribute :: Lexer (WithOffset Attribute)
+attribute = label "attribute" $ addOffset do
   char '@'
   name <- identifierText
   char '('
-  toks <- init <$> attrTokens [OperatorParensClose]
+  -- get a copy of the rest of the file and the current offset
+  buffer <- getInput
+  start  <- getOffset
+  -- go through all tokens, discard the closing paren
+  attrTokens [OperatorParensClose]
+  -- get current position, and extract raw text
+  end <- getOffset
+  let rawAttribute = T.take (end - start - 1) buffer
+  -- skip to next token and return attribute
   skipToNextToken True
-  -- convert the tokens back to Text
-  pure $ Attribute (Identifier name) (display toks)
+  pure $ Attribute (Identifier name) rawAttribute
   where
     attrTokens closing = case closing of
-      []         -> pure []
+      []         -> pure ()
       (cur:rest) -> do
-        t  <- token
-        ts <- if t == TokenOperator cur
-              then attrTokens rest
-              else case t of
-                     TokenOperator OperatorParensOpen    -> attrTokens (OperatorParensClose   : closing)
-                     TokenOperator OperatorBracesOpen    -> attrTokens (OperatorBracesClose   : closing)
-                     TokenOperator OperatorBracketsOpen  -> attrTokens (OperatorBracketsClose : closing)
-                     TokenOperator OperatorEOFComma      -> fail "found EOF while parsing attribute tokens"
-                     TokenInterpolation _                -> fail "interpolations are not supported in attributes"
-                     _                                   -> attrTokens closing
-        pure (t:ts)
+        t  <- tmap (Identity . discardOffset) <$> token
+        if t == TokenOperator (Identity cur)
+        then attrTokens rest
+        else case t of
+               TokenOperator (Identity OperatorParensOpen)   -> attrTokens (OperatorParensClose   : closing)
+               TokenOperator (Identity OperatorBracesOpen)   -> attrTokens (OperatorBracesClose   : closing)
+               TokenOperator (Identity OperatorBracketsOpen) -> attrTokens (OperatorBracketsClose : closing)
+               TokenOperator (Identity OperatorEOFComma)     -> fail "found EOF while parsing attribute tokens"
+               TokenInterpolation _                          -> fail "interpolations are not supported in attributes"
+               _                                             -> attrTokens closing
 
 -- | Parses an identifier, and identify whether it matches a keyword. Skips to
 -- the next token.
-identifierOrKeyword :: Lexer (Either Keyword Identifier)
-identifierOrKeyword = do
+identifierOrKeyword :: Lexer (WithOffset (Either Keyword Identifier))
+identifierOrKeyword = addOffset do
   res <- identifierText <&> \case
     "package" -> Left KeywordPackage
     "import"  -> Left KeywordImport
@@ -123,11 +130,12 @@ identifierOrKeyword = do
   skipToNextToken True
   pure res
 
+
 --------------------------------------------------------------------------------
 -- * Literals
 
-stringLiteral :: Lexer (Either [InterpolationElement] Text)
-stringLiteral = do
+stringLiteral :: Lexer (WithOffset (Either (Interpolation [Token WithOffset]) Text))
+stringLiteral = addOffset do
   hashCount <- length <$> many (char '#')
   res <- choice
     [ multilineStringLiteral hashCount
@@ -141,31 +149,31 @@ stringLiteral = do
   skipToNextToken True
   pure res
 
-simpleStringLiteral :: Int -> Lexer (Either [InterpolationElement] Text)
+simpleStringLiteral :: Int -> Lexer (Either [InterpolationElement [Token WithOffset]] Text)
 simpleStringLiteral hashCount = do
   char '"'
   res <- charLiteral hashCount False False `manyTill` char '"'
   pure $ postProcess res
 
-multilineStringLiteral :: Int -> Lexer (Either [InterpolationElement] Text)
+multilineStringLiteral :: Int -> Lexer (Either [InterpolationElement [Token WithOffset]] Text)
 multilineStringLiteral hashCount = do
   string "\"\"\"\n"
   res <- charLiteral hashCount True False `manyTill` multilineClosing "\"\"\""
   pure $ postProcess res
 
-simpleBytesLiteral :: Int -> Lexer (Either [InterpolationElement] Text)
+simpleBytesLiteral :: Int -> Lexer (Either [InterpolationElement [Token WithOffset]] Text)
 simpleBytesLiteral hashCount = do
   char '\''
   res <- charLiteral hashCount False True `manyTill` char '\''
   pure $ postProcess res
 
-multilineBytesLiteral :: Int -> Lexer (Either [InterpolationElement] Text)
+multilineBytesLiteral :: Int -> Lexer (Either [InterpolationElement [Token WithOffset]] Text)
 multilineBytesLiteral hashCount = do
   string "'''\n"
   res <- charLiteral hashCount True True `manyTill` multilineClosing "'''"
   pure $ postProcess res
 
-charLiteral :: Int -> Bool -> Bool -> Lexer InterpolationElement
+charLiteral :: Int -> Bool -> Bool -> Lexer (InterpolationElement [Token WithOffset])
 charLiteral hashCount allowNewline isSingleQuotes = do
   c <- anySingle
   if | c == '\n' && not allowNewline -> fail "unterminated in single-line literal"
@@ -225,19 +233,19 @@ charLiteral hashCount allowNewline isSingleQuotes = do
       []         -> pure []
       (cur:rest) -> do
         t  <- token
-        ts <- if t == TokenOperator cur
-              then interpolationTokens rest
-              else case t of
-                     TokenOperator OperatorParensOpen    -> interpolationTokens (OperatorParensClose   : closing)
-                     TokenOperator OperatorBracesOpen    -> interpolationTokens (OperatorBracesClose   : closing)
-                     TokenOperator OperatorBracketsOpen  -> interpolationTokens (OperatorBracketsClose : closing)
-                     TokenOperator OperatorEOFComma      -> fail "found EOF while parsing attribute tokens"
-                     _                                   -> interpolationTokens closing
+        ts <- case t of
+          TokenOperator (WithOffset (_, op))
+            | op == cur                  -> interpolationTokens rest
+            | op == OperatorParensOpen   -> interpolationTokens (OperatorParensClose   : closing)
+            | op == OperatorBracesOpen   -> interpolationTokens (OperatorBracesClose   : closing)
+            | op == OperatorBracketsOpen -> interpolationTokens (OperatorBracketsClose : closing)
+            | op == OperatorEOFComma     -> fail "found EOF while parsing attribute tokens"
+          _                              -> interpolationTokens closing
         pure (t:ts)
 
 -- | Parses a number token, and skips subsequent space.
-numberLiteral :: Lexer (Either Double Integer)
-numberLiteral = do
+numberLiteral :: Lexer (WithOffset (Either Double Integer))
+numberLiteral = label "number" $ addOffset do
   res <- choice
     [ Right <$> binary
     , Right <$> octal
@@ -302,6 +310,7 @@ numberLiteral = do
         Nothing -> 1000
       pure $ i ** r
 
+
 --------------------------------------------------------------------------------
 -- * Internal helpers
 
@@ -346,7 +355,7 @@ multilineClosing s = try $ void $ char '\n' >> hspace >> string s
 -- | Fuses the individual elements of a string literal. If there are no
 -- interpolations in the literal, it fuses all elements in one block of 'Text',
 -- returns a heterogeneous list otherwise.
-postProcess :: [InterpolationElement] -> Either [InterpolationElement] Text
+postProcess :: [InterpolationElement f] -> Either [InterpolationElement f] Text
 postProcess l = case foldr fuse [] l of
   []                      -> Right ""
   [InterpolationString t] -> Right t
@@ -354,3 +363,11 @@ postProcess l = case foldr fuse [] l of
   where
     fuse (InterpolationString t1) (InterpolationString t2 : r) = InterpolationString (t1 <> t2) : r
     fuse x r = x : r
+
+addOffset :: Lexer a -> Lexer (WithOffset a)
+addOffset = liftA2 withOffset (Offset <$> getOffset)
+
+flipE :: WithOffset (Either a b) -> Either (WithOffset a) (WithOffset b)
+flipE (WithOffset (o, e)) = case e of
+  Left  l -> Left  $ withOffset o l
+  Right r -> Right $ withOffset o r

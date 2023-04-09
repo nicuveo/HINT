@@ -2,9 +2,11 @@ module Lang.Cue.Error where
 
 import "this" Prelude
 
+import Lang.Cue.Location
+
 
 --------------------------------------------------------------------------------
--- Panic
+-- * Panic
 
 data Panic
   = UnreachableCode
@@ -19,6 +21,15 @@ panic = error . pp . \case
   DemoteBaseValue -> "02: attempted to demote an already-demoted value"
   where
     pp m = "PANIC\n\
-           \HINT as encountered an unrecoverable internal error.\n\
+           \hint as encountered an unrecoverable internal error.\n\
            \Please report this error with the following error code and call stack:\n\
            \ErrorCode: " ++ m
+
+
+--------------------------------------------------------------------------------
+-- * Parsing
+
+data ParseErrorCode
+  = LexerError
+
+type ParseError = WithLocation ParseErrorCode

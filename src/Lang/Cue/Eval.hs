@@ -2,8 +2,9 @@ module Lang.Cue.Eval (eval) where
 
 import "this" Prelude     hiding (negate, product, sum)
 
-import Lang.Cue.Grammar
+import Lang.Cue.AST
 import Lang.Cue.Operation
+import Lang.Cue.Tokens
 import Lang.Cue.Value
 
 

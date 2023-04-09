@@ -74,16 +74,18 @@ default-extensions:
 
 dependencies:
  - base
- - megaparsec
- - text
 
 library:
   source-dirs: src
   other-modules:
     - Prelude
   dependencies:
+    - Earley
     - containers
     - extra
+    - megaparsec
+    - mtl
+    - text
     - unordered-containers
 
 executables:

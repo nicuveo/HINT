@@ -1,44 +1,44 @@
+{-# LANGUAGE UndecidableInstances #-}
+
 module Lang.Cue.Tokens where
 
 import "this" Prelude
 
-import Control.Applicative
-import Data.Char
-import Data.Text           qualified as T
-
 
 --------------------------------------------------------------------------------
--- * Identifier
+-- * Token hierarchy
 
-newtype Identifier = Identifier Text
-  deriving (Show, Eq, Ord, IsString)
+data Token f
+  = TokenIdentifier    (f Identifier)
+  | TokenKeyword       (f Keyword)
+  | TokenOperator      (f Operator)
+  | TokenAttribute     (f Attribute)
+  | TokenInterpolation (f (Interpolation [Token f]))
+  | TokenString        (f Text)
+  | TokenInteger       (f Integer)
+  | TokenFloat         (f Double)
 
-mkIdentifier :: MonadFail m => Text -> m Identifier
-mkIdentifier i = do
-  let root = fromMaybe i $ T.stripPrefix "_#" i <|> T.stripPrefix "#" i
-  case T.uncons root of
-    Nothing -> fail "identifier cannot be empty"
-    Just (h, t) -> do
-      unless (isAlpha h || h == '_') $
-        fail "identifier must start with a letter (or modifiers)"
-      unless (T.all (\c -> isAlpha c || isDigit c || c == '_') t) $
-        fail "identifier body must only contain letters or digits"
-      pure $ Identifier i
+deriving instance
+  ( Show (f Identifier)
+  , Show (f Keyword)
+  , Show (f Operator)
+  , Show (f Attribute)
+  , Show (f (Interpolation [Token f]))
+  , Show (f Text)
+  , Show (f Integer)
+  , Show (f Double)
+  ) => Show (Token f)
 
-
---------------------------------------------------------------------------------
--- * Tokens
-
-data Token
-  = TokenIdentifier    Identifier
-  | TokenKeyword       Keyword
-  | TokenOperator      Operator
-  | TokenAttribute     Attribute
-  | TokenInterpolation Interpolation
-  | TokenString        Text
-  | TokenInteger       Integer
-  | TokenFloat         Double
-  deriving (Show, Eq)
+deriving instance
+  ( Eq (f Identifier)
+  , Eq (f Keyword)
+  , Eq (f Operator)
+  , Eq (f Attribute)
+  , Eq (f (Interpolation [Token f]))
+  , Eq (f Text)
+  , Eq (f Integer)
+  , Eq (f Double)
+  ) => Eq (Token f)
 
 data Keyword
   = KeywordPackage
@@ -90,15 +90,37 @@ data Operator
   | OperatorBracketsClose
   deriving (Show, Eq, Ord, Enum, Bounded)
 
+newtype Identifier = Identifier Text
+  deriving (Show, Eq, Ord, IsString)
+
 data Attribute = Attribute
   { attributeName :: Identifier
   , attributeText :: Text
   }
   deriving (Show, Eq)
 
-type Interpolation = [InterpolationElement]
+type Interpolation a = [InterpolationElement a]
 
-data InterpolationElement
+data InterpolationElement a
   = InterpolationString     Text
-  | InterpolationExpression [Token]
+  | InterpolationExpression a
   deriving (Show, Eq)
+
+
+--------------------------------------------------------------------------------
+-- * Token transformations
+
+tmap :: Functor f => (forall a. f a -> g a) -> Token f -> Token g
+tmap f = \case
+  TokenIdentifier    x -> TokenIdentifier    (f x)
+  TokenKeyword       x -> TokenKeyword       (f x)
+  TokenOperator      x -> TokenOperator      (f x)
+  TokenAttribute     x -> TokenAttribute     (f x)
+  TokenInterpolation x -> TokenInterpolation (f $ fmap (map timap) x)
+  TokenString        x -> TokenString        (f x)
+  TokenInteger       x -> TokenInteger       (f x)
+  TokenFloat         x -> TokenFloat         (f x)
+  where
+    timap = \case
+      InterpolationString     s -> InterpolationString s
+      InterpolationExpression e -> InterpolationExpression $ map (tmap f) e
