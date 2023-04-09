@@ -1,6 +1,6 @@
-name:                HINT
+name:                hint
 version:             0.1.0.0
-github:              "nicuveo/HINT"
+github:              "nicuveo/hint"
 license:             TBD
 author:              "Antoine Leblanc"
 maintainer:          "nicuveo@gmail.com"
@@ -91,7 +91,7 @@ executables:
     main: Main.hs
     source-dirs: app
     dependencies:
-      - HINT
+      - hint
       - haskeline
       - monad-loops
       - mtl
