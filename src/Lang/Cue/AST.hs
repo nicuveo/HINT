@@ -40,8 +40,8 @@ data Label = Label
   } deriving (Show, Eq)
 
 data LabelExpression
-  = LabelIdentifier Identifier    Optional
-  | LabelString     StringLiteral Optional
+  = LabelString     Text Optional
+  | LabelIdentifier Identifier Optional
   | LabelConstraint AliasedExpression
   deriving (Show, Eq)
 
@@ -83,22 +83,22 @@ data ComprehensionClause
 
 data Expression
   = Unary          UnaryExpression
-  | Multiplication Expression Expression [Expression]
-  | Division       Expression Expression [Expression]
-  | Addition       Expression Expression [Expression]
-  | Subtraction    Expression Expression [Expression]
-  | Equal          Expression Expression [Expression]
-  | NotEqual       Expression Expression [Expression]
-  | Match          Expression Expression [Expression]
-  | NotMatch       Expression Expression [Expression]
-  | LessThan       Expression Expression [Expression]
-  | LessOrEqual    Expression Expression [Expression]
-  | GreaterThan    Expression Expression [Expression]
-  | GreaterOrEqual Expression Expression [Expression]
-  | LogicalAnd     Expression Expression [Expression]
-  | LogicalOr      Expression Expression [Expression]
-  | Unification    Expression Expression [Expression]
-  | Disjunction    Expression Expression [Expression]
+  | Multiplication Expression Expression
+  | Division       Expression Expression
+  | Addition       Expression Expression
+  | Subtraction    Expression Expression
+  | Equal          Expression Expression
+  | NotEqual       Expression Expression
+  | Match          Expression Expression
+  | NotMatch       Expression Expression
+  | LessThan       Expression Expression
+  | LessOrEqual    Expression Expression
+  | GreaterThan    Expression Expression
+  | GreaterOrEqual Expression Expression
+  | LogicalAnd     Expression Expression
+  | LogicalOr      Expression Expression
+  | Unification    Expression Expression
+  | Disjunction    Expression Expression
   deriving (Show, Eq)
 
 data UnaryExpression = UnaryExpression
@@ -109,7 +109,7 @@ data UnaryExpression = UnaryExpression
 
 data PrimaryExpression
   = PrimaryOperand  Operand
-  | PrimarySelector PrimaryExpression (Either Identifier StringLiteral)
+  | PrimarySelector PrimaryExpression (Either Identifier Text)
   | PrimaryIndex    PrimaryExpression Expression
   | PrimarySlice    PrimaryExpression (Expression, Expression)
   | PrimaryCall     PrimaryExpression [Expression]
