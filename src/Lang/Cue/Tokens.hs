@@ -4,43 +4,71 @@ module Lang.Cue.Tokens where
 
 import "this" Prelude
 
+import Lang.Cue.HKD
+
 
 --------------------------------------------------------------------------------
 -- * Token hierarchy
 
 data Token f
-  = TokenIdentifier             (f Identifier)
-  | TokenKeyword                (f Keyword)
-  | TokenOperator               (f Operator)
-  | TokenAttribute              (f Attribute)
-  | TokenString                 (f (String, Text))
-  | TokenInteger                (f Integer)
-  | TokenFloat                  (f Double)
-  | TokenInterpolationBegin     (f ())
+  = TokenIdentifier             (HKD f Identifier)
+  | TokenKeyword                (HKD f Keyword)
+  | TokenOperator               (HKD f Operator)
+  | TokenAttribute              (HKD f Attribute)
+  | TokenString                 (HKD f (String, Text))
+  | TokenInteger                (HKD f Integer)
+  | TokenFloat                  (HKD f Double)
+  | TokenInterpolationBegin     (HKD f ())
   | TokenInterpolationEnd
-  | TokenInterpolationExprBegin (f ())
+  | TokenInterpolationExprBegin (HKD f ())
   | TokenInterpolationExprEnd
 
-deriving instance
-  ( Show (f Identifier)
-  , Show (f Keyword)
-  , Show (f Operator)
-  , Show (f Attribute)
-  , Show (f (String, Text))
-  , Show (f Integer)
-  , Show (f Double)
-  , Show (f ())
-  ) => Show (Token f)
+instance FFunctor Token where
+  ffmap f = \case
+    TokenIdentifier             x -> TokenIdentifier             (f @Identifier     x)
+    TokenKeyword                x -> TokenKeyword                (f @Keyword        x)
+    TokenOperator               x -> TokenOperator               (f @Operator       x)
+    TokenAttribute              x -> TokenAttribute              (f @Attribute      x)
+    TokenString                 x -> TokenString                 (f @(String, Text) x)
+    TokenInteger                x -> TokenInteger                (f @Integer        x)
+    TokenFloat                  x -> TokenFloat                  (f @Double         x)
+    TokenInterpolationBegin     x -> TokenInterpolationBegin     (f @()             x)
+    TokenInterpolationEnd         -> TokenInterpolationEnd
+    TokenInterpolationExprBegin x -> TokenInterpolationExprBegin (f @()             x)
+    TokenInterpolationExprEnd     -> TokenInterpolationExprEnd
+
+instance
+  ( Show (HKD f Identifier)
+  , Show (HKD f Keyword)
+  , Show (HKD f Operator)
+  , Show (HKD f Attribute)
+  , Show (HKD f (String, Text))
+  , Show (HKD f Integer)
+  , Show (HKD f Double)
+  , Show (HKD f String)
+  ) => Show (Token f) where
+  show = \case
+    TokenIdentifier             i -> show i
+    TokenKeyword                k -> show k
+    TokenOperator               o -> show o
+    TokenAttribute              a -> show a
+    TokenString                 s -> show s
+    TokenInteger                i -> show i
+    TokenFloat                  f -> show f
+    TokenInterpolationBegin     _ -> "InterpolationBegin"
+    TokenInterpolationExprBegin _ -> "InterpolationExprBegin"
+    TokenInterpolationEnd         -> "InterpolationEnd"
+    TokenInterpolationExprEnd     -> "InterpolationExprEnd"
 
 deriving instance
-  ( Eq (f Identifier)
-  , Eq (f Keyword)
-  , Eq (f Operator)
-  , Eq (f Attribute)
-  , Eq (f (String, Text))
-  , Eq (f Integer)
-  , Eq (f Double)
-  , Eq (f ())
+  ( Eq (HKD f Identifier)
+  , Eq (HKD f Keyword)
+  , Eq (HKD f Operator)
+  , Eq (HKD f Attribute)
+  , Eq (HKD f (String, Text))
+  , Eq (HKD f Integer)
+  , Eq (HKD f Double)
+  , Eq (HKD f ())
   ) => Eq (Token f)
 
 data Keyword
@@ -93,29 +121,11 @@ data Operator
   | OperatorBracketsClose
   deriving (Show, Eq, Ord, Enum, Bounded)
 
-newtype Identifier = Identifier Text
-  deriving (Show, Eq, Ord, IsString)
+newtype Identifier = Identifier { getIdentifier :: Text }
+  deriving newtype (Show, Eq, Ord, IsString)
 
 data Attribute = Attribute
   { attributeName :: Identifier
   , attributeText :: Text
   }
   deriving (Show, Eq)
-
-
---------------------------------------------------------------------------------
--- * Token transformations
-
-tmap :: (forall a. f a -> g a) -> Token f -> Token g
-tmap f = \case
-  TokenIdentifier             x -> TokenIdentifier             (f x)
-  TokenKeyword                x -> TokenKeyword                (f x)
-  TokenOperator               x -> TokenOperator               (f x)
-  TokenAttribute              x -> TokenAttribute              (f x)
-  TokenString                 x -> TokenString                 (f x)
-  TokenInteger                x -> TokenInteger                (f x)
-  TokenFloat                  x -> TokenFloat                  (f x)
-  TokenInterpolationBegin     x -> TokenInterpolationBegin     (f x)
-  TokenInterpolationEnd         -> TokenInterpolationEnd
-  TokenInterpolationExprBegin x -> TokenInterpolationExprBegin (f x)
-  TokenInterpolationExprEnd     -> TokenInterpolationExprEnd

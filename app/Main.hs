@@ -12,7 +12,9 @@ import System.Exit
 
 import Lang.Cue.Error
 import Lang.Cue.Eval
+import Lang.Cue.HKD
 import Lang.Cue.Lexer
+import Lang.Cue.Location
 import Lang.Cue.Parser
 
 
@@ -34,7 +36,7 @@ evalLine (dropWhile isSpace -> l) = case l of
     case cmd of
       "?"   -> usage
       "q"   -> exitSuccess
-      "tok" -> display $ tokenize "<interactive>" $ T.pack expr
+      "tok" -> display $ fmap (map $ reify discardLocation) $ tokenize "<interactive>" $ T.pack expr
       "ast" -> display $ parse expression "<interactive>" $ T.pack expr
       _     -> usage
   _ -> display $ fmap eval $ parse expression "<interactive>" $ T.pack l

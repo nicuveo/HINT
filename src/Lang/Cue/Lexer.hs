@@ -12,6 +12,7 @@ import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as L
 
 import Lang.Cue.Error
+import Lang.Cue.HKD
 import Lang.Cue.Location          hiding (getOffset)
 import Lang.Cue.Tokens
 
@@ -27,10 +28,16 @@ tokenize filename code =
   bimap (foldMap report . bundleErrors) (map annotate . concat) $
     parse (skipToNextToken False *> token `manyTill` eof) filename code
   where
+    codeLines :: [Text]
     codeLines = T.lines code
+
     mkLocation :: Int -> a -> WithLocation a
     mkLocation o a = withLocation (Location filename codeLines o) a
-    annotate = tmap \(WithOffset (Offset o, a)) -> mkLocation o a
+
+    annotate :: Token WithOffset -> Token WithLocation
+    annotate = ffmap \(WithOffset (Offset o, a)) -> mkLocation o a
+
+    report :: ParseError Text e -> [WithLocation ErrorInfo]
     report = \case
       FancyError o errs -> do
         err <- toList errs
@@ -43,6 +50,8 @@ tokenize filename code =
         pure $
           mkLocation o $
             LexerTokenError (fmap display got) (map display $ toList want)
+
+    display :: ErrorItem Char -> String
     display = \case
       Tokens s   -> toList s
       Label  s   -> toList s
@@ -125,16 +134,16 @@ attribute = label "attribute" $ addOffset do
     attrTokens closing = case closing of
       []         -> pure ()
       (cur:rest) -> do
-        t  <- tmap (Identity . discardOffset) . head <$> token
-        if t == TokenOperator (Identity cur)
+        t  <- reify discardOffset . head <$> token
+        if t == TokenOperator cur
         then attrTokens rest
         else case t of
-               TokenOperator (Identity OperatorParensOpen)   -> attrTokens (OperatorParensClose   : closing)
-               TokenOperator (Identity OperatorBracesOpen)   -> attrTokens (OperatorBracesClose   : closing)
-               TokenOperator (Identity OperatorBracketsOpen) -> attrTokens (OperatorBracketsClose : closing)
-               TokenOperator (Identity OperatorEOFComma)     -> fail "found EOF while parsing attribute tokens"
-               TokenInterpolationBegin _                     -> fail "interpolations are not supported in attributes"
-               _                                             -> attrTokens closing
+               TokenOperator OperatorParensOpen   -> attrTokens (OperatorParensClose   : closing)
+               TokenOperator OperatorBracesOpen   -> attrTokens (OperatorBracesClose   : closing)
+               TokenOperator OperatorBracketsOpen -> attrTokens (OperatorBracketsClose : closing)
+               TokenOperator OperatorEOFComma     -> fail "found EOF while parsing attribute tokens"
+               TokenInterpolationBegin _          -> fail "interpolations are not supported in attributes"
+               _                                  -> attrTokens closing
 
 -- | Parses an identifier, and identify whether it matches a keyword. Skips to
 -- the next token.
