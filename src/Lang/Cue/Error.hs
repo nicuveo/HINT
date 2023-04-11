@@ -39,6 +39,7 @@ data ErrorInfo
   = LexerTokenError (Maybe String) [String]
   | LexerCustomError String
   | ParserError
+  deriving (Show)
 
 type Error = WithLocation ErrorInfo
 
