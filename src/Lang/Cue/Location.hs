@@ -7,8 +7,7 @@ import "this" Prelude
 -- * Offset
 
 -- | A position within a file, measured in characters.
-newtype Offset = Offset Int
-  deriving (Show)
+type Offset = Int
 
 -- | Functor that wraps a value with an offset.
 newtype WithOffset a = WithOffset (Offset, a)
@@ -18,7 +17,7 @@ class HasOffset a where
   getOffset :: a -> Int
 
 instance HasOffset Offset where
-  getOffset (Offset x) = x
+  getOffset = id
 
 instance HasOffset (WithOffset a) where
   getOffset (WithOffset (o, _)) = getOffset o

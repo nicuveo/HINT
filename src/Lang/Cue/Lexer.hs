@@ -35,7 +35,7 @@ tokenize filename code =
     mkLocation o a = withLocation (Location filename codeLines o) a
 
     annotate :: Token WithOffset -> Token WithLocation
-    annotate = ffmap \(WithOffset (Offset o, a)) -> mkLocation o a
+    annotate = ffmap \(WithOffset (o, a)) -> mkLocation o a
 
     report :: ParseError Text e -> [WithLocation ErrorInfo]
     report = \case
@@ -184,43 +184,43 @@ stringLiteral = do
 
 simpleStringLiteral :: Int -> Lexer [Token WithOffset]
 simpleStringLiteral hashCount = do
-  b <- Offset <$> getOffset
+  b <- getOffset
   char '"'
   let delim = replicate hashCount '#' <> "\""
   res <- charLiteral delim hashCount False False `manyTill` char '"'
-  e <- Offset . subtract 1 <$> getOffset
+  e <- subtract 1 <$> getOffset
   pure $ postProcess delim b e res
 
 multilineStringLiteral :: Int -> Lexer [Token WithOffset]
 multilineStringLiteral hashCount = do
-  b <- Offset <$> getOffset
+  b <- getOffset
   string "\"\"\"\n"
   let delim = replicate hashCount '#' <> "\"\"\""
   res <- charLiteral delim hashCount True False `manyTill` multilineClosing "\"\"\""
-  e <- Offset . subtract 3 <$> getOffset
+  e <- subtract 3 <$> getOffset
   pure $ postProcess delim b e res
 
 simpleBytesLiteral :: Int -> Lexer [Token WithOffset]
 simpleBytesLiteral hashCount = do
-  b <- Offset <$> getOffset
+  b <- getOffset
   char '\''
   let delim = replicate hashCount '#' <> "'"
   res <- charLiteral delim hashCount False True `manyTill` char '\''
-  e <- Offset . subtract 1 <$> getOffset
+  e <- subtract 1 <$> getOffset
   pure $ postProcess delim b e res
 
 multilineBytesLiteral :: Int -> Lexer [Token WithOffset]
 multilineBytesLiteral hashCount = do
-  b <- Offset <$> getOffset
+  b <- getOffset
   string "'''\n"
   let delim = replicate hashCount '#' <> "'''"
   res <- charLiteral delim hashCount True True `manyTill` multilineClosing "'''"
-  e <- Offset . subtract 3 <$> getOffset
+  e <- subtract 3 <$> getOffset
   pure $ postProcess delim b e res
 
 charLiteral :: String -> Int -> Bool -> Bool -> Lexer [Token WithOffset]
 charLiteral delimiter hashCount allowNewline isSingleQuotes = do
-  o <- Offset <$> getOffset
+  o <- getOffset
   c <- anySingle
   let mkT = TokenString . withOffset o . (delimiter,)
   if | c == '\n' && not allowNewline -> fail "unterminated in single-line literal"
@@ -265,9 +265,9 @@ charLiteral delimiter hashCount allowNewline isSingleQuotes = do
              '(' -> do
                -- TODO: what about newlines?
                skipToNextToken True
-               ib <- Offset <$> getOffset
+               ib <- getOffset
                tks <- init <$> interpolationTokens [OperatorParensClose]
-               eb <- Offset . subtract 1 <$> getOffset
+               eb <- subtract 1 <$> getOffset
                pure $ [TokenInterpolationExprBegin $ withOffset ib ()] <> tks <> [TokenInterpolationExprEnd $ withOffset eb ()]
              oct -> do
                unless isSingleQuotes $
@@ -417,7 +417,7 @@ postProcess d b e l = case foldr fuse [] l of
     fuse x r = x <> r
 
 addOffset :: Lexer a -> Lexer (WithOffset a)
-addOffset = liftA2 withOffset (Offset <$> getOffset)
+addOffset = liftA2 withOffset (getOffset)
 
 flipE :: WithOffset (Either a b) -> Either (WithOffset a) (WithOffset b)
 flipE (WithOffset (o, e)) = case e of
