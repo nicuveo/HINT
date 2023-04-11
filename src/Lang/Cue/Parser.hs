@@ -134,15 +134,15 @@ fullGrammar = mdo
 
   -- expression
 
-  let level term ops = binary term ops <|> term
-      binary term ops = choice $
+  let term l r ops = binary l r ops <|> r
+      binary l r ops = choice $
         ops <&> \(op, cons) -> do
           -- left is at same precedence (left recursion)
-          l <- level term ops
+          le <- l
           operator op
           -- right is next precedence
-          r <- term
-          pure $ cons l r
+          re <- r
+          pure $ cons le re
 
   aliasedExpression <- rule "aliased expression" do
     alias <- optional $ identifier <* operator OperatorBind
@@ -151,19 +151,19 @@ fullGrammar = mdo
 
   expression <- rule "expression" precedence1
 
-  precedence1 <- inlineRule $ level precedence2
+  precedence1 <- inlineRule $ term precedence1 precedence2
     [ (OperatorOr, Disjunction)
     ]
-  precedence2 <- inlineRule $ level precedence3
+  precedence2 <- inlineRule $ term precedence2 precedence3
     [ (OperatorAnd, Unification)
     ]
-  precedence3 <- inlineRule $ level precedence4
+  precedence3 <- inlineRule $ term precedence3 precedence4
     [ (OperatorLOr, LogicalOr)
     ]
-  precedence4 <- inlineRule $ level precedence5
+  precedence4 <- inlineRule $ term precedence4 precedence5
     [ (OperatorLAnd, LogicalAnd)
     ]
-  precedence5 <- inlineRule $ level precedence6
+  precedence5 <- inlineRule $ term precedence5 precedence6
     [ (OperatorEqual,    Equal)
     , (OperatorNotEqual, NotEqual)
     , (OperatorMatch,    Match)
@@ -173,11 +173,11 @@ fullGrammar = mdo
     , (OperatorGTE,      GreaterOrEqual)
     , (OperatorGT,       GreaterThan)
     ]
-  precedence6 <- inlineRule $ level precedence7
+  precedence6 <- inlineRule $ term precedence6 precedence7
     [ (OperatorAdd, Addition)
     , (OperatorSub, Subtraction)
     ]
-  precedence7 <- inlineRule $ level unary
+  precedence7 <- inlineRule $ term precedence7 unary
     [ (OperatorMul, Multiplication)
     , (OperatorQuo, Division)
     ]
@@ -267,7 +267,7 @@ fullGrammar = mdo
   basicLiteral <- rule "basic literal" $ choice
     [ IntegerLiteral    <$> integerLiteral
     , FloatLiteral      <$> floatLiteral
-    , StringLiteral     <$> (stringLiteral expression)
+    , StringLiteral     <$> stringLiteral expression
     , BoolLiteral True  <$  keyword  KeywordTrue
     , BoolLiteral False <$  keyword  KeywordFalse
     , NullLiteral       <$  keyword  KeywordNull
@@ -290,7 +290,7 @@ fullGrammar = mdo
       Just e  -> OpenList   es e
 
   structLiteral <- rule "struct literal" $
-    braces $ (declaration `sepBy` comma) <* optional comma
+    braces $ declaration `sepBy` comma <* optional comma
 
   -- comprehension
 
@@ -464,7 +464,7 @@ brackets :: Parser r a -> Parser r a
 brackets = between (operator OperatorBracketsOpen) (operator OperatorBracketsClose)
 
 commaList :: Parser r a -> Parser r [a]
-commaList p = (p `sepBy` explicitComma) <* optional explicitComma
+commaList p = p `sepBy` explicitComma <* optional explicitComma
 
 
 --------------------------------------------------------------------------------
