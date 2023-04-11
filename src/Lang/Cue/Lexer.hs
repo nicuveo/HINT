@@ -22,7 +22,7 @@ tokenize
   :: String -- file name
   -> Text   -- raw input
   -> Either [Error] [Token WithOffset]
-tokenize = bimap undefined concat ... parse (skipToNextToken False *> many token <* eof)
+tokenize = bimap undefined concat ... parse (skipToNextToken False *> token `manyTill` eof)
 
 
 --------------------------------------------------------------------------------
