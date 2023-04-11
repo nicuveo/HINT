@@ -22,19 +22,19 @@ tokenize
   :: String -- file name
   -> Text   -- raw input
   -> Either ParseError [Token WithOffset]
-tokenize = left undefined ... parse (skipToNextToken False *> many token <* eof)
+tokenize = bimap undefined concat ... parse (skipToNextToken False *> many token <* eof)
 
 
 --------------------------------------------------------------------------------
 -- * Tokens
 
-token :: Lexer (Token WithOffset)
+token :: Lexer [Token WithOffset]
 token = label "token" $ choice
-  [ TokenOperator <$> operator
-  , TokenAttribute <$> attribute
-  , either TokenKeyword TokenIdentifier   . flipE <$> identifierOrKeyword
-  , either TokenInterpolation TokenString . flipE <$> stringLiteral
-  , either TokenFloat TokenInteger        . flipE <$> numberLiteral
+  [ pure . TokenOperator <$> operator
+  , pure . TokenAttribute <$> attribute
+  , pure . either TokenKeyword TokenIdentifier . flipE <$> identifierOrKeyword
+  , pure . either TokenFloat TokenInteger      . flipE <$> numberLiteral
+  , stringLiteral
   , fail "did not find a valid token"
   ]
 
@@ -101,7 +101,7 @@ attribute = label "attribute" $ addOffset do
     attrTokens closing = case closing of
       []         -> pure ()
       (cur:rest) -> do
-        t  <- tmap (Identity . discardOffset) <$> token
+        t  <- tmap (Identity . discardOffset) . head <$> token
         if t == TokenOperator (Identity cur)
         then attrTokens rest
         else case t of
@@ -109,7 +109,7 @@ attribute = label "attribute" $ addOffset do
                TokenOperator (Identity OperatorBracesOpen)   -> attrTokens (OperatorBracesClose   : closing)
                TokenOperator (Identity OperatorBracketsOpen) -> attrTokens (OperatorBracketsClose : closing)
                TokenOperator (Identity OperatorEOFComma)     -> fail "found EOF while parsing attribute tokens"
-               TokenInterpolation _                          -> fail "interpolations are not supported in attributes"
+               TokenInterpolationBegin _                     -> fail "interpolations are not supported in attributes"
                _                                             -> attrTokens closing
 
 -- | Parses an identifier, and identify whether it matches a keyword. Skips to
@@ -134,8 +134,8 @@ identifierOrKeyword = addOffset do
 --------------------------------------------------------------------------------
 -- * Literals
 
-stringLiteral :: Lexer (WithOffset (Either (Interpolation [Token WithOffset]) Text))
-stringLiteral = addOffset do
+stringLiteral :: Lexer [Token WithOffset]
+stringLiteral = do
   hashCount <- length <$> many (char '#')
   res <- choice
     [ multilineStringLiteral hashCount
@@ -149,91 +149,102 @@ stringLiteral = addOffset do
   skipToNextToken True
   pure res
 
-simpleStringLiteral :: Int -> Lexer (Either [InterpolationElement [Token WithOffset]] Text)
+simpleStringLiteral :: Int -> Lexer [Token WithOffset]
 simpleStringLiteral hashCount = do
+  b <- Offset <$> getOffset
   char '"'
-  res <- charLiteral hashCount False False `manyTill` char '"'
-  pure $ postProcess res
+  let delim = replicate hashCount '#' <> "\""
+  res <- charLiteral delim hashCount False False `manyTill` char '"'
+  pure $ postProcess delim b res
 
-multilineStringLiteral :: Int -> Lexer (Either [InterpolationElement [Token WithOffset]] Text)
+multilineStringLiteral :: Int -> Lexer [Token WithOffset]
 multilineStringLiteral hashCount = do
+  b <- Offset <$> getOffset
   string "\"\"\"\n"
-  res <- charLiteral hashCount True False `manyTill` multilineClosing "\"\"\""
-  pure $ postProcess res
+  let delim = replicate hashCount '#' <> "\"\"\""
+  res <- charLiteral delim hashCount True False `manyTill` multilineClosing "\"\"\""
+  pure $ postProcess delim b res
 
-simpleBytesLiteral :: Int -> Lexer (Either [InterpolationElement [Token WithOffset]] Text)
+simpleBytesLiteral :: Int -> Lexer [Token WithOffset]
 simpleBytesLiteral hashCount = do
+  b <- Offset <$> getOffset
   char '\''
-  res <- charLiteral hashCount False True `manyTill` char '\''
-  pure $ postProcess res
+  let delim = replicate hashCount '#' <> "'"
+  res <- charLiteral delim hashCount False True `manyTill` char '\''
+  pure $ postProcess delim b res
 
-multilineBytesLiteral :: Int -> Lexer (Either [InterpolationElement [Token WithOffset]] Text)
+multilineBytesLiteral :: Int -> Lexer [Token WithOffset]
 multilineBytesLiteral hashCount = do
+  b <- Offset <$> getOffset
   string "'''\n"
-  res <- charLiteral hashCount True True `manyTill` multilineClosing "'''"
-  pure $ postProcess res
+  let delim = replicate hashCount '#' <> "'''"
+  res <- charLiteral delim hashCount True True `manyTill` multilineClosing "'''"
+  pure $ postProcess delim b res
 
-charLiteral :: Int -> Bool -> Bool -> Lexer (InterpolationElement [Token WithOffset])
-charLiteral hashCount allowNewline isSingleQuotes = do
+charLiteral :: String -> Int -> Bool -> Bool -> Lexer [Token WithOffset]
+charLiteral delimiter hashCount allowNewline isSingleQuotes = do
+  o <- Offset <$> getOffset
   c <- anySingle
+  let mkT = TokenString . withOffset o . (delimiter,)
   if | c == '\n' && not allowNewline -> fail "unterminated in single-line literal"
      | c == '\\' -> optional (count hashCount $ char '#') >>= \case
          Nothing -> do
            s <- many $ char '#'
-           pure $ InterpolationString $ T.pack $ '\\' : s
+           pure [mkT $ T.pack $ '\\' : s]
          Just _  -> do
            e <- oneOf @[] "abfnrtv/\\'\"(uUx01234567" <|> fail "invalid escape character"
            case e of
-             'a'  -> pure $ InterpolationString "\a"
-             'b'  -> pure $ InterpolationString "\b"
-             'f'  -> pure $ InterpolationString "\f"
-             'n'  -> pure $ InterpolationString "\n"
-             'r'  -> pure $ InterpolationString "\r"
-             't'  -> pure $ InterpolationString "\t"
-             'v'  -> pure $ InterpolationString "\v"
-             '/'  -> pure $ InterpolationString "/"
-             '\\' -> pure $ InterpolationString "\\"
+             'a'  -> pure [mkT "\a"]
+             'b'  -> pure [mkT "\b"]
+             'f'  -> pure [mkT "\f"]
+             'n'  -> pure [mkT "\n"]
+             'r'  -> pure [mkT "\r"]
+             't'  -> pure [mkT "\t"]
+             'v'  -> pure [mkT "\v"]
+             '/'  -> pure [mkT "/" ]
+             '\\' -> pure [mkT "\\"]
              '\'' -> do
                unless isSingleQuotes $
                  fail "unexpected escaped single quote in string literal"
-               pure $ InterpolationString "'"
+               pure [mkT "'"]
              '"'  -> do
                when isSingleQuotes $
                  fail "unexpected escaped double quote in bytes literal"
-               pure $ InterpolationString "\""
+               pure [mkT "\""]
              'u'  -> do
                -- TODO: handle out of bounds hex values
                value <- count 4 hexDigitChar <|> fail "expecting 4 hexadecimal digits after \\u"
-               pure $ InterpolationString $ T.singleton $ chr $ foldl' (\acc d -> 16*acc + digitToInt d) 0 value
+               pure [mkT $ T.singleton $ chr $ foldl' (\acc d -> 16*acc + digitToInt d) 0 value]
              'U'  -> do
                -- TODO: handle out of bounds hex values
                value <- count 8 hexDigitChar <|> fail "expecting 8 hexadecimal digits after \\U"
-               pure $ InterpolationString $ T.singleton $ chr $ foldl' (\acc d -> 16*acc + digitToInt d) 0 value
+               pure [mkT $ T.singleton $ chr $ foldl' (\acc d -> 16*acc + digitToInt d) 0 value]
              'x'  -> do
                -- TODO: handle out of bounds hex values
                unless isSingleQuotes $
                  fail "unexpected hex value in string literal"
                value <- count 2 hexDigitChar <|> fail "expecting 2 hexadecimal digits after \\x"
-               pure $ InterpolationString $ T.singleton $ chr $ foldl' (\acc d -> 16*acc + digitToInt d) 0 value
+               pure [mkT $ T.singleton $ chr $ foldl' (\acc d -> 16*acc + digitToInt d) 0 value]
              '(' -> do
                -- TODO: what about newlines?
                skipToNextToken True
+               ib <- Offset <$> getOffset
                tks <- init <$> interpolationTokens [OperatorParensClose]
-               pure $ InterpolationExpression tks
+               pure $ [TokenInterpolationExprBegin $ withOffset ib ()] <> tks <> [TokenInterpolationExprEnd]
              oct -> do
                unless isSingleQuotes $
                  fail "unexpected octal value in string literal"
                value <- count 2 octDigitChar <|> fail "expecting 3 octal digits after \\"
-               pure $ InterpolationString $ T.singleton $ chr $ foldl' (\acc d -> 8*acc + digitToInt d) 0 $ oct:value
-     | otherwise -> pure $ InterpolationString $ T.singleton c
+               pure [mkT $ T.singleton $ chr $ foldl' (\acc d -> 8*acc + digitToInt d) 0 $ oct:value]
+     | otherwise -> pure [mkT $ T.singleton c]
   where
     -- similarly to attrTokens, this expects a balanced set of tokens
     -- but, unlike attributes, it doesn't reject interpolations
     interpolationTokens closing = case closing of
       []         -> pure []
       (cur:rest) -> do
-        t  <- token
-        ts <- case t of
+        toks@(t:_) <- token
+        following <- case t of
           TokenOperator (WithOffset (_, op))
             | op == cur                  -> interpolationTokens rest
             | op == OperatorParensOpen   -> interpolationTokens (OperatorParensClose   : closing)
@@ -241,7 +252,7 @@ charLiteral hashCount allowNewline isSingleQuotes = do
             | op == OperatorBracketsOpen -> interpolationTokens (OperatorBracketsClose : closing)
             | op == OperatorEOFComma     -> fail "found EOF while parsing attribute tokens"
           _                              -> interpolationTokens closing
-        pure (t:ts)
+        pure $ toks <> following
 
 -- | Parses a number token, and skips subsequent space.
 numberLiteral :: Lexer (WithOffset (Either Double Integer))
@@ -353,16 +364,19 @@ multilineClosing :: Text -> Lexer ()
 multilineClosing s = try $ void $ char '\n' >> hspace >> string s
 
 -- | Fuses the individual elements of a string literal. If there are no
--- interpolations in the literal, it fuses all elements in one block of 'Text',
--- returns a heterogeneous list otherwise.
-postProcess :: [InterpolationElement f] -> Either [InterpolationElement f] Text
-postProcess l = case foldr fuse [] l of
-  []                      -> Right ""
-  [InterpolationString t] -> Right t
-  heterogeneousList       -> Left heterogeneousList
+-- interpolations in the literal, it fuses all elements in one string token,
+-- and returns a heterogeneous list otherwise.
+postProcess :: String -> Offset -> [[Token WithOffset]] -> [Token WithOffset]
+postProcess d b l = case foldr fuse [] l of
+  [] -> [TokenString $ withOffset b (d, "")]
+  r@[TokenString _]  -> r
+  r -> [TokenInterpolationBegin $ withOffset b ()] <> r <> [TokenInterpolationEnd]
   where
-    fuse (InterpolationString t1) (InterpolationString t2 : r) = InterpolationString (t1 <> t2) : r
-    fuse x r = x : r
+    fuse
+      [TokenString (WithOffset (o, (x, s1)))]
+      (TokenString (WithOffset (_, (_, s2))) : r) =
+       TokenString (WithOffset (o, (x, s1 <> s2))) : r
+    fuse x r = x <> r
 
 addOffset :: Lexer a -> Lexer (WithOffset a)
 addOffset = liftA2 withOffset (Offset <$> getOffset)

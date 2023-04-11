@@ -18,7 +18,6 @@ data SourceFile = SourceFile
 data Import = Import
   { importName  :: Maybe Identifier
   , importPath  :: Text
-  , importIdent :: Maybe Identifier
   } deriving (Show, Eq)
 
 data Declaration
@@ -127,7 +126,12 @@ data QualifiedIdentifier = QualifiedIdentifier
   , qiIdentifier  :: Identifier
   } deriving (Show, Eq)
 
-type StringLiteral = Either (Interpolation Expression) Text
+type StringLiteral = [StringElement]
+
+data StringElement
+  = RawStringLiteral String Text
+  | Interpolation Expression
+  deriving (Show, Eq)
 
 data Literal
   = IntegerLiteral Integer

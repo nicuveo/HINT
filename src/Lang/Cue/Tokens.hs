@@ -9,24 +9,27 @@ import "this" Prelude
 -- * Token hierarchy
 
 data Token f
-  = TokenIdentifier    (f Identifier)
-  | TokenKeyword       (f Keyword)
-  | TokenOperator      (f Operator)
-  | TokenAttribute     (f Attribute)
-  | TokenInterpolation (f (Interpolation [Token f]))
-  | TokenString        (f Text)
-  | TokenInteger       (f Integer)
-  | TokenFloat         (f Double)
+  = TokenIdentifier             (f Identifier)
+  | TokenKeyword                (f Keyword)
+  | TokenOperator               (f Operator)
+  | TokenAttribute              (f Attribute)
+  | TokenString                 (f (String, Text))
+  | TokenInteger                (f Integer)
+  | TokenFloat                  (f Double)
+  | TokenInterpolationBegin     (f ())
+  | TokenInterpolationEnd
+  | TokenInterpolationExprBegin (f ())
+  | TokenInterpolationExprEnd
 
 deriving instance
   ( Show (f Identifier)
   , Show (f Keyword)
   , Show (f Operator)
   , Show (f Attribute)
-  , Show (f (Interpolation [Token f]))
-  , Show (f Text)
+  , Show (f (String, Text))
   , Show (f Integer)
   , Show (f Double)
+  , Show (f ())
   ) => Show (Token f)
 
 deriving instance
@@ -34,10 +37,10 @@ deriving instance
   , Eq (f Keyword)
   , Eq (f Operator)
   , Eq (f Attribute)
-  , Eq (f (Interpolation [Token f]))
-  , Eq (f Text)
+  , Eq (f (String, Text))
   , Eq (f Integer)
   , Eq (f Double)
+  , Eq (f ())
   ) => Eq (Token f)
 
 data Keyword
@@ -99,28 +102,20 @@ data Attribute = Attribute
   }
   deriving (Show, Eq)
 
-type Interpolation a = [InterpolationElement a]
-
-data InterpolationElement a
-  = InterpolationString     Text
-  | InterpolationExpression a
-  deriving (Show, Eq)
-
 
 --------------------------------------------------------------------------------
 -- * Token transformations
 
-tmap :: Functor f => (forall a. f a -> g a) -> Token f -> Token g
+tmap :: (forall a. f a -> g a) -> Token f -> Token g
 tmap f = \case
-  TokenIdentifier    x -> TokenIdentifier    (f x)
-  TokenKeyword       x -> TokenKeyword       (f x)
-  TokenOperator      x -> TokenOperator      (f x)
-  TokenAttribute     x -> TokenAttribute     (f x)
-  TokenInterpolation x -> TokenInterpolation (f $ fmap (map timap) x)
-  TokenString        x -> TokenString        (f x)
-  TokenInteger       x -> TokenInteger       (f x)
-  TokenFloat         x -> TokenFloat         (f x)
-  where
-    timap = \case
-      InterpolationString     s -> InterpolationString s
-      InterpolationExpression e -> InterpolationExpression $ map (tmap f) e
+  TokenIdentifier             x -> TokenIdentifier             (f x)
+  TokenKeyword                x -> TokenKeyword                (f x)
+  TokenOperator               x -> TokenOperator               (f x)
+  TokenAttribute              x -> TokenAttribute              (f x)
+  TokenString                 x -> TokenString                 (f x)
+  TokenInteger                x -> TokenInteger                (f x)
+  TokenFloat                  x -> TokenFloat                  (f x)
+  TokenInterpolationBegin     x -> TokenInterpolationBegin     (f x)
+  TokenInterpolationEnd         -> TokenInterpolationEnd
+  TokenInterpolationExprBegin x -> TokenInterpolationExprBegin (f x)
+  TokenInterpolationExprEnd     -> TokenInterpolationExprEnd
