@@ -2,6 +2,8 @@ module Lang.Cue.Eval (eval) where
 
 import "this" Prelude     hiding (negate, product, sum)
 
+import Data.Text qualified as T
+
 import Lang.Cue.AST
 import Lang.Cue.Operation
 import Lang.Cue.Tokens
@@ -17,24 +19,24 @@ eval = resolve . evalExpression
 evalExpression :: Expression -> Value
 evalExpression = \case
   Unary          u -> evalUnary u
-  Multiplication l r v -> run l r v evalMultiplication
-  Division       l r v -> run l r v evalDivision
-  Addition       l r v -> run l r v evalAddition
-  Subtraction    l r v -> run l r v evalSubtraction
-  Equal          l r v -> run l r v evalEqual
-  NotEqual       l r v -> run l r v evalNotEqual
-  Match          l r v -> run l r v undefined -- evalMatch
-  NotMatch       l r v -> run l r v undefined -- evalNotMatch
-  LessThan       l r v -> run l r v evalLessThan
-  LessOrEqual    l r v -> run l r v evalLessOrEqual
-  GreaterThan    l r v -> run l r v evalGreaterThan
-  GreaterOrEqual l r v -> run l r v evalGreaterOrEqual
-  LogicalAnd     l r v -> run l r v undefined -- evalLogicalAnd
-  LogicalOr      l r v -> run l r v undefined -- evalLogicalOr
-  Unification    l r v -> run l r v evalUnification
-  Disjunction    l r v -> run l r v evalDisjunction
+  Multiplication l r -> go l r evalMultiplication
+  Division       l r -> go l r evalDivision
+  Addition       l r -> go l r evalAddition
+  Subtraction    l r -> go l r evalSubtraction
+  Equal          l r -> go l r evalEqual
+  NotEqual       l r -> go l r evalNotEqual
+  Match          l r -> go l r undefined -- evalMatch
+  NotMatch       l r -> go l r undefined -- evalNotMatch
+  LessThan       l r -> go l r evalLessThan
+  LessOrEqual    l r -> go l r evalLessOrEqual
+  GreaterThan    l r -> go l r evalGreaterThan
+  GreaterOrEqual l r -> go l r evalGreaterOrEqual
+  LogicalAnd     l r -> go l r undefined -- evalLogicalAnd
+  LogicalOr      l r -> go l r undefined -- evalLogicalOr
+  Unification    l r -> go l r evalUnification
+  Disjunction    l r -> go l r evalDisjunction
   where
-    run l r v f = foldl1 f $ map evalExpression $ l:r:v
+    go l r f = evalExpression l `f` evalExpression r
 
 evalUnary :: UnaryExpression -> Value
 evalUnary (UnaryExpression operators primaryExpression) =
@@ -55,9 +57,11 @@ evalOperand = \case
   OperandLiteral l    -> case l of
     IntegerLiteral i -> Atom $ IntegerAtom i
     FloatLiteral   f -> Atom $ FloatAtom f
-    StringLiteral  t -> case t of
-      Left  _ -> undefined
-      Right s -> Atom $ StringAtom s
+    StringLiteral  t -> Atom $ StringAtom $ T.concat $ t <&> \elt ->
+      case elt of
+        RawStringLiteral _ x -> x
+        Interpolation e -> case eval e of
+          _ -> undefined
     BoolLiteral    b -> Atom $ BooleanAtom b
     NullLiteral      -> Null
     BottomLiteral    -> Bottom ArisedFromLiteral
