@@ -46,6 +46,15 @@ instance Show Location where
 newtype WithLocation a = WithLocation (Location, a)
   deriving (Show, Functor, Foldable, Traversable)
 
+instance HasOffset Location where
+  getOffset = locOffset
+
+instance HasOffset (WithLocation a) where
+  getOffset (WithLocation (l, _)) = getOffset l
+
+getLocation :: WithLocation a -> Location
+getLocation (WithLocation (l, _)) = l
+
 withLocation :: Location -> a -> WithLocation a
 withLocation = WithLocation ... (,)
 

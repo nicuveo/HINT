@@ -188,7 +188,8 @@ simpleStringLiteral hashCount = do
   char '"'
   let delim = replicate hashCount '#' <> "\""
   res <- charLiteral delim hashCount False False `manyTill` char '"'
-  pure $ postProcess delim b res
+  e <- Offset . subtract 1 <$> getOffset
+  pure $ postProcess delim b e res
 
 multilineStringLiteral :: Int -> Lexer [Token WithOffset]
 multilineStringLiteral hashCount = do
@@ -196,7 +197,8 @@ multilineStringLiteral hashCount = do
   string "\"\"\"\n"
   let delim = replicate hashCount '#' <> "\"\"\""
   res <- charLiteral delim hashCount True False `manyTill` multilineClosing "\"\"\""
-  pure $ postProcess delim b res
+  e <- Offset . subtract 3 <$> getOffset
+  pure $ postProcess delim b e res
 
 simpleBytesLiteral :: Int -> Lexer [Token WithOffset]
 simpleBytesLiteral hashCount = do
@@ -204,7 +206,8 @@ simpleBytesLiteral hashCount = do
   char '\''
   let delim = replicate hashCount '#' <> "'"
   res <- charLiteral delim hashCount False True `manyTill` char '\''
-  pure $ postProcess delim b res
+  e <- Offset . subtract 1 <$> getOffset
+  pure $ postProcess delim b e res
 
 multilineBytesLiteral :: Int -> Lexer [Token WithOffset]
 multilineBytesLiteral hashCount = do
@@ -212,7 +215,8 @@ multilineBytesLiteral hashCount = do
   string "'''\n"
   let delim = replicate hashCount '#' <> "'''"
   res <- charLiteral delim hashCount True True `manyTill` multilineClosing "'''"
-  pure $ postProcess delim b res
+  e <- Offset . subtract 3 <$> getOffset
+  pure $ postProcess delim b e res
 
 charLiteral :: String -> Int -> Bool -> Bool -> Lexer [Token WithOffset]
 charLiteral delimiter hashCount allowNewline isSingleQuotes = do
@@ -263,7 +267,8 @@ charLiteral delimiter hashCount allowNewline isSingleQuotes = do
                skipToNextToken True
                ib <- Offset <$> getOffset
                tks <- init <$> interpolationTokens [OperatorParensClose]
-               pure $ [TokenInterpolationExprBegin $ withOffset ib ()] <> tks <> [TokenInterpolationExprEnd]
+               eb <- Offset . subtract 1 <$> getOffset
+               pure $ [TokenInterpolationExprBegin $ withOffset ib ()] <> tks <> [TokenInterpolationExprEnd $ withOffset eb ()]
              oct -> do
                unless isSingleQuotes $
                  fail "unexpected octal value in string literal"
@@ -399,11 +404,11 @@ multilineClosing s = try $ void $ char '\n' >> hspace >> string s
 -- | Fuses the individual elements of a string literal. If there are no
 -- interpolations in the literal, it fuses all elements in one string token,
 -- and returns a heterogeneous list otherwise.
-postProcess :: String -> Offset -> [[Token WithOffset]] -> [Token WithOffset]
-postProcess d b l = case foldr fuse [] l of
+postProcess :: String -> Offset -> Offset -> [[Token WithOffset]] -> [Token WithOffset]
+postProcess d b e l = case foldr fuse [] l of
   [] -> [TokenString $ withOffset b (d, "")]
   r@[TokenString _]  -> r
-  r -> [TokenInterpolationBegin $ withOffset b ()] <> r <> [TokenInterpolationEnd]
+  r -> [TokenInterpolationBegin $ withOffset b ()] <> r <> [TokenInterpolationEnd $ withOffset e ()]
   where
     fuse
       [TokenString (WithOffset (o, (x, s1)))]

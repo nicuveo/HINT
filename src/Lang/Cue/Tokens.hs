@@ -6,6 +6,7 @@ import "this" Prelude
 
 import Lang.Cue.HKD
 import Lang.Cue.NoShow
+import Lang.Cue.Location
 
 
 --------------------------------------------------------------------------------
@@ -20,9 +21,9 @@ data Token f
   | TokenInteger                (HKD f Integer)
   | TokenFloat                  (HKD f Double)
   | TokenInterpolationBegin     (HKD f ())
-  | TokenInterpolationEnd
+  | TokenInterpolationEnd       (HKD f ())
   | TokenInterpolationExprBegin (HKD f ())
-  | TokenInterpolationExprEnd
+  | TokenInterpolationExprEnd   (HKD f ())
 
 instance FFunctor Token where
   ffmap f = \case
@@ -34,9 +35,9 @@ instance FFunctor Token where
     TokenInteger                x -> TokenInteger                (f @Integer        x)
     TokenFloat                  x -> TokenFloat                  (f @Double         x)
     TokenInterpolationBegin     x -> TokenInterpolationBegin     (f @()             x)
-    TokenInterpolationEnd         -> TokenInterpolationEnd
+    TokenInterpolationEnd       x -> TokenInterpolationEnd       (f @()             x)
     TokenInterpolationExprBegin x -> TokenInterpolationExprBegin (f @()             x)
-    TokenInterpolationExprEnd     -> TokenInterpolationExprEnd
+    TokenInterpolationExprEnd   x -> TokenInterpolationExprEnd   (f @()             x)
 
 instance
   ( Show (HKD f Identifier)
@@ -58,9 +59,9 @@ instance
     TokenInteger                i -> show i
     TokenFloat                  f -> show f
     TokenInterpolationBegin     x -> show $ hmap @f @() (const $ NoShow "InterpolationBegin")     x
+    TokenInterpolationEnd       x -> show $ hmap @f @() (const $ NoShow "InterpolationEnd")       x
     TokenInterpolationExprBegin x -> show $ hmap @f @() (const $ NoShow "InterpolationExprBegin") x
-    TokenInterpolationEnd         -> "InterpolationEnd"
-    TokenInterpolationExprEnd     -> "InterpolationExprEnd"
+    TokenInterpolationExprEnd   x -> show $ hmap @f @() (const $ NoShow "InterpolationExprEnd")   x
 
 deriving instance
   ( Eq (HKD f Identifier)
@@ -72,6 +73,29 @@ deriving instance
   , Eq (HKD f Double)
   , Eq (HKD f ())
   ) => Eq (Token f)
+
+instance
+  ( HasOffset (HKD f Identifier)
+  , HasOffset (HKD f Keyword)
+  , HasOffset (HKD f Operator)
+  , HasOffset (HKD f Attribute)
+  , HasOffset (HKD f (String, Text))
+  , HasOffset (HKD f Integer)
+  , HasOffset (HKD f Double)
+  , HasOffset (HKD f ())
+  ) => HasOffset (Token f) where
+  getOffset = \case
+    TokenIdentifier             i -> getOffset i
+    TokenKeyword                k -> getOffset k
+    TokenOperator               o -> getOffset o
+    TokenAttribute              a -> getOffset a
+    TokenString                 s -> getOffset s
+    TokenInteger                i -> getOffset i
+    TokenFloat                  f -> getOffset f
+    TokenInterpolationBegin     x -> getOffset x
+    TokenInterpolationExprBegin x -> getOffset x
+    TokenInterpolationEnd       x -> getOffset x
+    TokenInterpolationExprEnd   x -> getOffset x
 
 data Keyword
   = KeywordPackage
