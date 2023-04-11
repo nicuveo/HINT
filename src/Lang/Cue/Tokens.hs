@@ -5,6 +5,7 @@ module Lang.Cue.Tokens where
 import "this" Prelude
 
 import Lang.Cue.HKD
+import Lang.Cue.NoShow
 
 
 --------------------------------------------------------------------------------
@@ -45,7 +46,8 @@ instance
   , Show (HKD f (String, Text))
   , Show (HKD f Integer)
   , Show (HKD f Double)
-  , Show (HKD f String)
+  , Show (HKD f NoShow)
+  , HKDF f
   ) => Show (Token f) where
   show = \case
     TokenIdentifier             i -> show i
@@ -55,8 +57,8 @@ instance
     TokenString                 s -> show s
     TokenInteger                i -> show i
     TokenFloat                  f -> show f
-    TokenInterpolationBegin     _ -> "InterpolationBegin"
-    TokenInterpolationExprBegin _ -> "InterpolationExprBegin"
+    TokenInterpolationBegin     x -> show $ hmap @f @() (const $ NoShow "InterpolationBegin")     x
+    TokenInterpolationExprBegin x -> show $ hmap @f @() (const $ NoShow "InterpolationExprBegin") x
     TokenInterpolationEnd         -> "InterpolationEnd"
     TokenInterpolationExprEnd     -> "InterpolationExprEnd"
 

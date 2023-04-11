@@ -29,6 +29,7 @@ library
       Lang.Cue.HKD
       Lang.Cue.Lexer
       Lang.Cue.Location
+      Lang.Cue.NoShow
       Lang.Cue.Operation
       Lang.Cue.Parser
       Lang.Cue.Printer
@@ -100,6 +101,7 @@ executable evalexpr
       Lang.Cue.HKD
       Lang.Cue.Lexer
       Lang.Cue.Location
+      Lang.Cue.NoShow
       Lang.Cue.Operation
       Lang.Cue.Parser
       Lang.Cue.Printer
@@ -175,6 +177,7 @@ test-suite tests
       Lang.Cue.HKD
       Lang.Cue.Lexer
       Lang.Cue.Location
+      Lang.Cue.NoShow
       Lang.Cue.Operation
       Lang.Cue.Parser
       Lang.Cue.Printer
