@@ -7,7 +7,7 @@ import "this" Prelude             hiding (exponent)
 import Data.Char
 import Data.Set                   ()
 import Data.Text                  qualified as T
-import Text.Megaparsec            hiding (Token, token)
+import Text.Megaparsec            hiding (Token, token, tokens)
 import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as L
 
@@ -25,9 +25,16 @@ tokenize
   -> Text
   -> Either [Error] [Token WithLocation]
 tokenize filename code =
-  bimap (foldMap report . bundleErrors) (map annotate . concat) $
-    parse (skipToNextToken False *> token `manyTill` eof) filename code
+  bimap (foldMap report . bundleErrors) (map annotate) $
+    parse tokens filename code
   where
+    tokens :: Lexer [Token WithOffset]
+    tokens = do
+      skipToNextToken False
+      result <- token `manyTill` eof
+      eofTok <- token
+      pure $ concat result <> eofTok
+
     codeLines :: [Text]
     codeLines = T.lines code
 

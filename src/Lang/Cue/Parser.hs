@@ -3,6 +3,7 @@
 
 module Lang.Cue.Parser
   ( parse
+  , Grammar
   , sourceFile
   , expression
   ) where
@@ -10,9 +11,9 @@ module Lang.Cue.Parser
 import "this" Prelude
 
 import Control.Applicative.Combinators
+import Data.Text                       qualified as T
 import Text.Earley                     hiding (Grammar, Parser, rule)
 import Text.Earley                     qualified as E
-import Data.Text qualified as T
 
 import Lang.Cue.AST
 import Lang.Cue.Error
@@ -52,10 +53,10 @@ parse grammar filename code = do
 -- * Grammars
 
 sourceFile :: Grammar r SourceFile
-sourceFile = fst <$> fullGrammar
+sourceFile = discardEOF . fst <$> fullGrammar
 
 expression :: Grammar r Expression
-expression = snd <$> fullGrammar
+expression = discardEOF . snd <$> fullGrammar
 
 fullGrammar :: forall r. E.Grammar r (Parser r SourceFile, Parser r Expression)
 fullGrammar = mdo
@@ -467,6 +468,9 @@ comma = named "comma or newline" $ void $ choice
 explicitComma :: Parser r ()
 explicitComma = named "comma" $ void $ operator OperatorRealComma
 
+eof :: Parser r ()
+eof = void $ operator OperatorEOFComma
+
 parens :: Parser r a -> Parser r a
 parens = between (operator OperatorParensOpen) (operator OperatorParensClose)
 
@@ -496,6 +500,8 @@ rule = inlineRule ... named
 inlineRule :: Parser r a -> Grammar r a
 inlineRule = E.rule
 
+discardEOF :: Parser r a -> Parser r a
+discardEOF = (<* optional eof)
 
 --------------------------------------------------------------------------------
 -- * AST helpers
