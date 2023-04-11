@@ -38,6 +38,7 @@ panic p = withFrozenCallStack $ error $ pp $ case p of
 data ErrorInfo
   = LexerTokenError (Maybe String) [String]
   | LexerCustomError String
+  | ParserError
 
 type Error = WithLocation ErrorInfo
 
@@ -45,15 +46,16 @@ errorMessage :: Error -> Text
 errorMessage (WithLocation (loc@Location {..}, e)) = case e of
   LexerTokenError unexpected expected -> case unexpected of
     Nothing -> msg 1
-      [ "unexpected token"
+      [ "lexer error: unexpected token"
       , "expecting one of: " <> T.intercalate ", " (T.pack . show <$> expected)
       ]
     Just u  -> msg (length u)
-      [ "unexpected token"
+      [ "lexer error: unexpected token"
       , "expecting one of: " <> T.intercalate ", " (map T.pack expected)
       , "but instead found: " <> T.pack u
       ]
-  LexerCustomError err -> msg 1 [T.pack err]
+  LexerCustomError err -> msg 1 ["lexer error", T.pack err]
+  ParserError -> msg 1 ["parse error"]
   where
     (row, col) = findPos loc
     currentLine = locCode !! (row-1)

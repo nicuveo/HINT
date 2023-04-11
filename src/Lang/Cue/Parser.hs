@@ -12,6 +12,7 @@ import "this" Prelude
 import Control.Applicative.Combinators
 import Text.Earley                     hiding (Grammar, Parser, rule)
 import Text.Earley                     qualified as E
+import Data.Text qualified as T
 
 import Lang.Cue.AST
 import Lang.Cue.Error
@@ -34,9 +35,17 @@ parse
 parse grammar filename code = do
   tokens <- tokenize filename code
   case E.fullParses (E.parser grammar) tokens of
-    ([], _report) -> Left undefined
-    ([result], _) -> Right result
-    _             -> panic AmbiguousParse
+    ([], Report {..}) -> Left $ pure $ case unconsumed of
+      []    -> mkLocation position ParserError
+      (t:_) -> mkLocation (getOffset t) ParserError
+    ([result], _)     -> Right result
+    _                 -> panic AmbiguousParse
+  where
+    codeLines :: [Text]
+    codeLines = T.lines code
+
+    mkLocation :: Int -> a -> WithLocation a
+    mkLocation o a = withLocation (Location filename codeLines o) a
 
 
 --------------------------------------------------------------------------------
