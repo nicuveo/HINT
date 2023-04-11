@@ -26,6 +26,7 @@ library
       Lang.Cue.AST
       Lang.Cue.Error
       Lang.Cue.Eval
+      Lang.Cue.HKD
       Lang.Cue.Lexer
       Lang.Cue.Location
       Lang.Cue.Operation
@@ -96,6 +97,7 @@ executable evalexpr
       Lang.Cue.AST
       Lang.Cue.Error
       Lang.Cue.Eval
+      Lang.Cue.HKD
       Lang.Cue.Lexer
       Lang.Cue.Location
       Lang.Cue.Operation
@@ -170,6 +172,7 @@ test-suite tests
       Lang.Cue.AST
       Lang.Cue.Error
       Lang.Cue.Eval
+      Lang.Cue.HKD
       Lang.Cue.Lexer
       Lang.Cue.Location
       Lang.Cue.Operation
