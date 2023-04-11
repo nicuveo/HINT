@@ -31,9 +31,11 @@ ghc-options:
   - -Wno-unsafe
   # turn on additional features
   - -fwarn-tabs
+  - -foptimal-applicative-do
 
 default-extensions:
   - AllowAmbiguousTypes
+  - ApplicativeDo
   - BangPatterns
   - BlockArguments
   - ConstraintKinds
@@ -85,6 +87,7 @@ library:
     - extra
     - megaparsec
     - mtl
+    - parser-combinators
     - text
     - unordered-containers
 

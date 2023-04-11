@@ -1,6 +1,253 @@
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
+{-# LANGUAGE RecursiveDo #-}
 
 module Lang.Cue.Parser where
+
+import "this" Prelude
+
+import Control.Applicative.Combinators
+import Text.Earley hiding (Parser, Grammar, rule)
+import Text.Earley qualified as E
+
+import Lang.Cue.AST
+import Lang.Cue.Error
+import Lang.Cue.Tokens
+import Lang.Cue.Location
+
+
+--------------------------------------------------------------------------------
+-- * Parser
+
+type Grammar r a = E.Grammar r (Parser r a)
+type Parser r = Prod r Text (Token WithOffset)
+
+parse
+  :: Grammar r a
+  -> String
+  -> Text
+  -> Either ParseError a
+parse = undefined
+
+
+--------------------------------------------------------------------------------
+-- * Grammars
+
+sourceFile :: Grammar r SourceFile
+sourceFile = mdo
+  res <- rule "source file" do
+    a <- many     $ attribute     <* comma
+    p <- optional $ packageClause <* comma
+    i <- many     $ importDecl    <* comma
+    d <- many     $ declaration   <* comma
+    pure $ SourceFile p a (concat i) d
+
+  packageClause <- rule "package clause" $
+    keyword KeywordPackage *> packageName
+
+  packageName <- rule "package name"
+    identifier
+
+  importDecl <- rule "import declaration" $
+    keyword KeywordImport *> choice
+      [ pure <$> importSpec
+      , parens $ commaList importSpec
+      ]
+
+  importSpec <- rule "import spec" do
+    name <- optional packageName
+    path <- importPath
+    pure $ Import name path
+
+  importPath <- rule "import path" $ terminal \case
+    TokenString (discardOffset -> (d, s)) | d == "\"" -> Just s
+    _ -> Nothing
+
+  pure res
+
+
+
+{-
+
+earley cannot do validation; move this elsewhere
+
+      illegal = "!\"#$%&'()*,:;<=>?[]^{|}\xFFFD" :: String
+      isValid c = isPrint c && not (isSpace c) && notElem c illegal
+      impPath = do
+        path <- simpleStringLiteral 0 >>= \case
+          Left  _ -> fail "interpolations not allowed in import paths"
+          Right t -> pure t
+        let
+          (filePath, suffix) = case T.breakOnEnd ":" path of
+            (part1, part2)
+              | T.null part1 -> (part2, Nothing)
+              | otherwise    -> (T.dropEnd 1 part1, Just part2)
+        unless (T.all isValid filePath) $
+          fail $ "import path contains invalid characters"
+        alias <- traverse mkIdentifier suffix
+        pure (filePath, alias)
+
+-}
+
+--------------------------------------------------------------------------------
+-- * Terminals
+
+identifier :: Parser r Identifier
+identifier = named "identifier" $ terminal \case
+  TokenIdentifier (discardOffset -> a) -> Just a
+  _ -> Nothing
+
+keyword :: Keyword -> Parser r ()
+keyword kw = named name $ terminal \case
+  TokenKeyword (discardOffset -> k) | kw == k -> Just ()
+  _ -> Nothing
+  where
+    name = case kw of
+      KeywordPackage -> "\"package\" keyword"
+      KeywordImport  -> "\"import\" keyword"
+      KeywordNull    -> "\"null\" keyword"
+      KeywordTrue    -> "\"true\" keyword"
+      KeywordFalse   -> "\"false\" keyword"
+      KeywordFor     -> "\"for\" keyword"
+      KeywordIn      -> "\"in\" keyword"
+      KeywordIf      -> "\"if\" keyword"
+      KeywordLet     -> "\"let\" keyword"
+
+operator :: Operator -> Parser r ()
+operator op = named name $ terminal \case
+  TokenOperator (discardOffset -> o) | op == o -> Just ()
+  _ -> Nothing
+  where
+    name = case op of
+      OperatorRealComma     -> "comma"
+      OperatorNewlineComma  -> "comma"
+      OperatorEOFComma      -> "comma"
+      OperatorAdd           -> "+"
+      OperatorSub           -> "-"
+      OperatorMul           -> "*"
+      OperatorPow           -> "^"
+      OperatorQuo           -> "/"
+      OperatorArrow         -> "<-"
+      OperatorLAnd          -> "&&"
+      OperatorLOr           -> "||"
+      OperatorAnd           -> "&"
+      OperatorOr            -> "|"
+      OperatorEqual         -> "=="
+      OperatorNotEqual      -> "!="
+      OperatorMatch         -> "=~"
+      OperatorNotMatch      -> "!~"
+      OperatorLTE           -> "<="
+      OperatorGTE           -> ">="
+      OperatorLT            -> "<"
+      OperatorGT            -> ">"
+      OperatorBind          -> "="
+      OperatorIsA           -> "::"
+      OperatorColon         -> ":"
+      OperatorOption        -> "?"
+      OperatorNot           -> "!"
+      OperatorEllipsis      -> "..."
+      OperatorPeriod        -> "."
+      OperatorBottom        -> "_|_"
+      OperatorParensOpen    -> "("
+      OperatorParensClose   -> ")"
+      OperatorBracesOpen    -> "{"
+      OperatorBracesClose   -> "}"
+      OperatorBracketsOpen  -> "["
+      OperatorBracketsClose -> "]"
+
+attribute :: Parser r Attribute
+attribute = named "attribute" $ terminal \case
+  TokenAttribute (discardOffset -> a) -> Just a
+  _ -> Nothing
+
+stringLiteral :: Parser r Expression -> Parser r StringLiteral
+stringLiteral expr = named "string literal" $ fmap pure rawLiteral <|> interpolation
+  where
+    rawLiteral = named "raw string literal" $ terminal \case
+      TokenString (discardOffset -> (d, s)) -> Just (RawStringLiteral d s)
+      _ -> Nothing
+    interpolation = named "interpolation" do
+      terminal \case
+        TokenInterpolationBegin _ -> Just ()
+        _ -> Nothing
+      elts <- many $ rawLiteral <|> interpExpr
+      terminal \case
+        TokenInterpolationBegin _ -> Just ()
+        _ -> Nothing
+      pure elts
+    interpExpr = named "interpolation expression" do
+      terminal \case
+        TokenInterpolationExprBegin _ -> Just ()
+        _ -> Nothing
+      e <- Interpolation <$> expr
+      terminal \case
+        TokenInterpolationExprBegin _ -> Just ()
+        _ -> Nothing
+      pure e
+
+integerLiteral :: Parser r Integer
+integerLiteral = named "integer literal" $ terminal \case
+  TokenInteger (discardOffset -> i) -> Just i
+  _ -> Nothing
+
+floatLiteral :: Parser r Double
+floatLiteral = named "float literal" $ terminal \case
+  TokenFloat (discardOffset -> d) -> Just d
+  _ -> Nothing
+
+
+--------------------------------------------------------------------------------
+-- * Combinators
+
+-- | Expects a comma, regardless of whether it was explicit or added by a newline.
+comma :: Parser r ()
+comma = named "comma or newline" $ choice
+  [ operator OperatorRealComma
+  , operator OperatorNewlineComma
+  , operator OperatorEOFComma
+  ]
+
+-- | Expects an explicit comma, for lists.
+explicitComma :: Parser r ()
+explicitComma = named "comma" $ operator OperatorRealComma
+
+parens :: Parser r a -> Parser r a
+parens = between (operator OperatorParensOpen) (operator OperatorParensClose)
+
+braces :: Parser r a -> Parser r a
+braces = between (operator OperatorBracesOpen) (operator OperatorBracesClose)
+
+brackets :: Parser r a -> Parser r a
+brackets = between (operator OperatorBracketsOpen) (operator OperatorBracketsClose)
+
+commaList :: Parser r a -> Parser r [a]
+commaList p = (p `sepBy` explicitComma) <* optional explicitComma
+
+
+--------------------------------------------------------------------------------
+-- * Tools
+
+named :: Text -> Parser r a -> Parser r a
+named = flip (<?>)
+
+rule :: Text -> Parser r a -> Grammar r a
+rule = E.rule ... named
+
+
+declaration = undefined
+
+{-
+
+-}
+
+
+--------------------------------------------------------------------------------
+-- * Grammar
+
+expression = undefined
+
+
+{-
+
 
 import "this" Prelude             hiding (exponent)
 
@@ -14,174 +261,6 @@ import Text.Megaparsec.Char.Lexer qualified as L
 
 import Lang.Cue.Error
 import Lang.Cue.Grammar
-
-
---------------------------------------------------------------------------------
--- Lexer
-
--- | Skips all following whitespace and comments. However, in accordance to
--- section "Commas" of the reference, this stops at a newline where a comma
--- should be inserted. The next token will then identify that newline as a
--- comma.
-skipToNextToken :: Bool -> Parser ()
-skipToNextToken autoComma = do
-  L.space hspace1 comment empty
-  remainingInput <- getInput
-  unless (autoComma && (T.null remainingInput || T.head remainingInput == '\n')) $
-    L.space space1 comment empty
-  where
-    comment = L.skipLineComment "//"
-
--- | Parses the raw text that matches an identifier, but doesn't perforn any
--- further check. Does NOT skip to the next token!
-identifierText :: Parser Text
-identifierText = try $ do
-  prefix <- optional $ string "#" <|> string "_#"
-  firstC <- letter
-  rest   <- many $ letter <|> digitChar
-  pure $ fromMaybe mempty prefix <> T.cons firstC (T.pack rest)
-  where
-    letter = char '_' <|> letterChar
-
--- | Parses an identifier, and identify whether it matches a keyword. Skips to
--- the next token.
-identifierOrKeyword :: Parser (Either Keyword Identifier)
-identifierOrKeyword = do
-  res <- identifierText <&> \case
-    "package" -> Left KeywordPackage
-    "import"  -> Left KeywordImport
-    "null"    -> Left KeywordNull
-    "true"    -> Left KeywordTrue
-    "false"   -> Left KeywordFalse
-    "for"     -> Left KeywordFor
-    "in"      -> Left KeywordIn
-    "if"      -> Left KeywordIf
-    "let"     -> Left KeywordLet
-    ident     -> Right $ Identifier ident
-  skipToNextToken True
-  pure res
-
--- | Parses an identifier, and skips to the next token on success. Fails without
--- consuming input if the found identifier is a keyword.
-identifier :: Parser Identifier
-identifier = try $ identifierOrKeyword >>= \case
-  Left kw -> fail $ "expected identifier, got keyword " ++ show kw
-  Right i -> pure i
-
--- | Parses an keyword, and skips to the next token on success. Fails without
--- consuming input if the found token is an identifier.
-keyword :: Keyword -> Parser Keyword
-keyword kw = try $ identifierOrKeyword >>= \case
-  Left  k
-    | k == kw   -> pure k
-    | otherwise -> fail $ "expected keyword " ++ show kw ++ ", got other keyword " ++ show k
-  Right _ -> fail $ "expected keyword " ++ show kw ++ ", got identifier"
-
--- | Parses an operator, and does NOT skip following space.
-nextOperator :: Parser (Operator, Bool)
-nextOperator = choice
-  [ (OperatorEOFComma,      False) <$ eof
-  , (OperatorRealComma,     False) <$ char ','
-  , (OperatorNewlineComma,  False) <$ char '\n'
-  , (OperatorAdd,           False) <$ char '+'
-  , (OperatorSub,           False) <$ char '-'
-  , (OperatorPow,           False) <$ char '^'
-  , (OperatorMul,           False) <$ char '*'
-  , (OperatorQuo,           False) <$ char '/'
-  , (OperatorArrow,         False) <$ string "<-"
-  , (OperatorLAnd,          False) <$ string "&&"
-  , (OperatorLOr,           False) <$ string "||"
-  , (OperatorAnd,           False) <$ char '&'
-  , (OperatorOr,            False) <$ char '|'
-  , (OperatorEqual,         False) <$ string "=="
-  , (OperatorNotEqual,      False) <$ string "!="
-  , (OperatorMatch,         False) <$ string "=~"
-  , (OperatorNotMatch,      False) <$ string "!~"
-  , (OperatorLTE,           False) <$ string "<="
-  , (OperatorGTE,           False) <$ string ">="
-  , (OperatorLT,            False) <$ char '<'
-  , (OperatorGT,            False) <$ char '>'
-  , (OperatorBind,          False) <$ char '='
-  , (OperatorIsA,           False) <$ string "::"
-  , (OperatorColon,         False) <$ char ':'
-  , (OperatorOption,        True ) <$ char '?'
-  , (OperatorNot,           False) <$ char '!'
-  , (OperatorParensOpen,    False) <$ char '('
-  , (OperatorParensClose,   True ) <$ char ')'
-  , (OperatorBracesOpen,    False) <$ char '{'
-  , (OperatorBracesClose,   True ) <$ char '}'
-  , (OperatorBracketsOpen,  False) <$ char '['
-  , (OperatorBracketsClose, True ) <$ char ']'
-  , (OperatorBottom,        True ) <$ string "_|_"
-  , (OperatorEllipsis,      True ) <$ string "..."
-  , (OperatorPeriod,        False) <$ char '.'
-  ]
-
-operators :: [Operator] -> Parser Operator
-operators ops = do
-  (op, autoComma) <- try $ do
-    (op, autoComma) <- nextOperator
-    unless (op `elem` ops) $
-      fail $ "expected one of " <> show ops <> ", got " <> show op
-    pure (op, autoComma)
-  skipToNextToken autoComma
-  pure op
-
-operator :: Operator -> Parser Operator
-operator expected = do
-  (op, autoComma) <- try $ do
-    (op, autoComma) <- nextOperator
-    unless (op == expected) $
-      fail $ "expected " <> show expected <>  ", got " <> show op
-    pure (op, autoComma)
-  skipToNextToken autoComma
-  pure op
-
-anyOperator :: Parser Operator
-anyOperator = do
-  (op, autoComma) <- nextOperator
-  skipToNextToken autoComma
-  pure op
-
-attribute :: Parser Attribute
-attribute = do
-  char '@'
-  name <- identifierText
-  operator OperatorParensOpen
-  toks <- attrTokens OperatorParensClose
-  skipToNextToken True
-  pure $ Attribute (Identifier name) toks
-  where
-    attrTokens closing = do
-      t <- token
-      if t == TokenOperator closing
-      then pure []
-      else do
-        at <- case t of
-          TokenOperator OperatorParensOpen    -> AttributeParens   <$> attrTokens OperatorParensClose
-          TokenOperator OperatorBracesOpen    -> AttributeBraces   <$> attrTokens OperatorBracesClose
-          TokenOperator OperatorBracketsOpen  -> AttributeBrackets <$> attrTokens OperatorBracketsClose
-          TokenOperator OperatorParensClose   -> fail "unmatched closing"
-          TokenOperator OperatorBracesClose   -> fail "unmatched closing"
-          TokenOperator OperatorBracketsClose -> fail "unmatched closing"
-          TokenOperator OperatorEOFComma      -> fail "found EOF while parsing attribute tokens"
-          TokenInterpolation _                -> fail "interpolations are not supported in attributes"
-          _                                   -> pure $ AttributeToken t
-        (at:) <$> attrTokens closing
-
-token :: Parser Token
-token = label "token" $ choice
-  [ TokenOperator <$> anyOperator
-  , TokenAttribute <$> attribute
-  , either TokenFloat TokenInteger <$> numberLiteral
-  , either TokenKeyword TokenIdentifier <$> identifierOrKeyword
-  , either TokenInterpolation TokenString <$> stringLiteral
-  , fail "did not find a valid token"
-  ]
-
-tokenize :: Parser [Token]
-tokenize = token `manyTill` eof
-
 
 --------------------------------------------------------------------------------
 -- Parser
@@ -733,3 +812,5 @@ listLiteral = operator OperatorBracketsOpen *> do
             Nothing -> do
               elemt <- embedding
               go $ elems ++ [elemt]
+
+-}
