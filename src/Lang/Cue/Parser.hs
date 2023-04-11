@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
 {-# LANGUAGE RecursiveDo #-}
 
-module Lang.Cue.Parser where
+module Lang.Cue.Parser (parse, sourceFile, expression) where
 
 import "this" Prelude
 
@@ -12,6 +12,7 @@ import Text.Earley qualified as E
 import Lang.Cue.AST
 import Lang.Cue.Error
 import Lang.Cue.Tokens
+import Lang.Cue.Lexer
 import Lang.Cue.Location
 
 
@@ -22,11 +23,16 @@ type Grammar r a = E.Grammar r (Parser r a)
 type Parser r = Prod r Text (Token WithOffset)
 
 parse
-  :: Grammar r a
+  :: (forall r. Grammar r a)
   -> String
   -> Text
   -> Either ParseError a
-parse = undefined
+parse grammar filename code = do
+  tokens <- tokenize filename code
+  case E.fullParses (E.parser grammar) tokens of
+    ([], _report) -> Left undefined
+    ([result], _)    -> Right result
+    _                -> panic AmbiguousParse
 
 
 --------------------------------------------------------------------------------

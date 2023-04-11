@@ -11,14 +11,16 @@ import Lang.Cue.Location
 data Panic
   = UnreachableCode
   | DemoteBaseValue
+  | AmbiguousParse
 
 unreachable :: a
 unreachable = panic UnreachableCode
 
 panic :: Panic -> a
 panic = error . pp . \case
-  UnreachableCode -> "01: reached supposedly unreachable code"
-  DemoteBaseValue -> "02: attempted to demote an already-demoted value"
+  UnreachableCode -> "001: reached supposedly unreachable code"
+  DemoteBaseValue -> "002: attempted to demote an already-demoted value"
+  AmbiguousParse  -> "003: parsing was ambiguous and returned more than one result"
   where
     pp m = "PANIC\n\
            \hint as encountered an unrecoverable internal error.\n\
