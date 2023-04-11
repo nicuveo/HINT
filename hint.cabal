@@ -93,8 +93,20 @@ library
 executable evalexpr
   main-is: Main.hs
   other-modules:
+      Lang.Cue.AST
+      Lang.Cue.Error
+      Lang.Cue.Eval
+      Lang.Cue.Lexer
+      Lang.Cue.Location
+      Lang.Cue.Operation
+      Lang.Cue.Parser
+      Lang.Cue.Printer
+      Lang.Cue.Tokens
+      Lang.Cue.Value
+      Prelude
       Paths_hint
   hs-source-dirs:
+      src
       app
   default-extensions:
       AllowAmbiguousTypes
@@ -138,12 +150,17 @@ executable evalexpr
       ViewPatterns
   ghc-options: -Wcompat -Werror -Weverything -Wno-all-missed-specialisations -Wno-implicit-prelude -Wno-missed-specialisations -Wno-missing-deriving-strategies -Wno-missing-export-lists -Wno-missing-exported-signatures -Wno-missing-import-lists -Wno-missing-kind-signatures -Wno-missing-local-signatures -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-safe -Wno-unsafe -fwarn-tabs -foptimal-applicative-do
   build-depends:
-      base
+      Earley
+    , base
+    , containers
+    , extra
     , haskeline
-    , hint
+    , megaparsec
     , monad-loops
     , mtl
+    , parser-combinators
     , text
+    , unordered-containers
   default-language: Haskell2010
 
 test-suite tests
@@ -208,8 +225,16 @@ test-suite tests
       ViewPatterns
   ghc-options: -Wcompat -Werror -Weverything -Wno-all-missed-specialisations -Wno-implicit-prelude -Wno-missed-specialisations -Wno-missing-deriving-strategies -Wno-missing-export-lists -Wno-missing-exported-signatures -Wno-missing-import-lists -Wno-missing-kind-signatures -Wno-missing-local-signatures -Wno-missing-safe-haskell-mode -Wno-monomorphism-restriction -Wno-safe -Wno-unsafe -fwarn-tabs -foptimal-applicative-do -fno-warn-missing-signatures
   build-depends:
-      base
+      Earley
+    , base
+    , containers
+    , extra
+    , megaparsec
+    , mtl
+    , parser-combinators
     , tasty
     , tasty-hunit
     , tasty-quickcheck
+    , text
+    , unordered-containers
   default-language: Haskell2010

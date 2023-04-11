@@ -5,8 +5,9 @@ module Lang.Cue.Lexer (tokenize) where
 import "this" Prelude             hiding (exponent)
 
 import Data.Char
+import Data.Set                   ()
 import Data.Text                  qualified as T
-import Text.Megaparsec            hiding (Label, ParseError, Token, token)
+import Text.Megaparsec            hiding (Token, token)
 import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as L
 
@@ -19,10 +20,33 @@ import Lang.Cue.Tokens
 -- * Running the lexer
 
 tokenize
-  :: String -- file name
-  -> Text   -- raw input
-  -> Either [Error] [Token WithOffset]
-tokenize = bimap undefined concat ... parse (skipToNextToken False *> token `manyTill` eof)
+  :: String
+  -> Text
+  -> Either [Error] [Token WithLocation]
+tokenize filename code =
+  bimap (foldMap report . bundleErrors) (map annotate . concat) $
+    parse (skipToNextToken False *> token `manyTill` eof) filename code
+  where
+    codeLines = T.lines code
+    mkLocation :: Int -> a -> WithLocation a
+    mkLocation o a = withLocation (Location filename codeLines o) a
+    annotate = tmap \(WithOffset (Offset o, a)) -> mkLocation o a
+    report = \case
+      FancyError o errs -> do
+        err <- toList errs
+        pure $
+          mkLocation o $
+            case err of
+              ErrorFail s -> LexerCustomError s
+              _           -> unreachable
+      TrivialError o got want ->
+        pure $
+          mkLocation o $
+            LexerTokenError (fmap display got) (map display $ toList want)
+    display = \case
+      Tokens s   -> toList s
+      Label  s   -> toList s
+      EndOfInput -> "end of input"
 
 
 --------------------------------------------------------------------------------
@@ -32,9 +56,9 @@ token :: Lexer [Token WithOffset]
 token = label "token" $ choice
   [ pure . TokenOperator <$> operator
   , pure . TokenAttribute <$> attribute
+  , try stringLiteral
   , pure . either TokenKeyword TokenIdentifier . flipE <$> identifierOrKeyword
   , pure . either TokenFloat TokenInteger      . flipE <$> numberLiteral
-  , stringLiteral
   , fail "did not find a valid token"
   ]
 

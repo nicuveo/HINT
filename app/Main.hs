@@ -1,19 +1,19 @@
 module Main where
 
-import Prelude
+import "this" Prelude
 
 import Control.Monad.Loops
 import Control.Monad.Trans      (lift)
 import Data.Char
 import Data.Text                qualified as T
-import Data.Text.IO                qualified as T
+import Data.Text.IO             qualified as T
 import System.Console.Haskeline
 import System.Exit
 
-import Lang.Cue.Eval
-import Lang.Cue.Parser
-import Lang.Cue.Lexer
 import Lang.Cue.Error
+import Lang.Cue.Eval
+import Lang.Cue.Lexer
+import Lang.Cue.Parser
 
 
 main :: IO ()
@@ -40,7 +40,7 @@ evalLine (dropWhile isSpace -> l) = case l of
   _ -> display $ fmap eval $ parse expression "<interactive>" $ T.pack l
   where
     display :: Show a => Either [Error] a -> IO ()
-    display = either (T.putStrLn . foldMap errorMessage) print
+    display = either (T.putStr . T.unlines . intersperse "" . map errorMessage) print
     usage = putStrLn "\
       \:?     print this help\n\
       \:q     quit this REPL\n\

@@ -1,26 +1,30 @@
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
 {-# LANGUAGE RecursiveDo #-}
 
-module Lang.Cue.Parser (parse, sourceFile, expression) where
+module Lang.Cue.Parser
+  ( parse
+  , sourceFile
+  , expression
+  ) where
 
 import "this" Prelude
 
 import Control.Applicative.Combinators
-import Text.Earley hiding (Parser, Grammar, rule)
-import Text.Earley qualified as E
+import Text.Earley                     hiding (Grammar, Parser, rule)
+import Text.Earley                     qualified as E
 
 import Lang.Cue.AST
 import Lang.Cue.Error
-import Lang.Cue.Tokens
 import Lang.Cue.Lexer
 import Lang.Cue.Location
+import Lang.Cue.Tokens
 
 
 --------------------------------------------------------------------------------
 -- * Parser
 
 type Grammar r a = E.Grammar r (Parser r a)
-type Parser r = Prod r Text (Token WithOffset)
+type Parser r = Prod r Text (Token WithLocation)
 
 parse
   :: (forall r. Grammar r a)
@@ -31,8 +35,8 @@ parse grammar filename code = do
   tokens <- tokenize filename code
   case E.fullParses (E.parser grammar) tokens of
     ([], _report) -> Left undefined
-    ([result], _)    -> Right result
-    _                -> panic AmbiguousParse
+    ([result], _) -> Right result
+    _             -> panic AmbiguousParse
 
 
 --------------------------------------------------------------------------------
@@ -329,12 +333,12 @@ fullGrammar = mdo
 
 identifier :: Parser r Identifier
 identifier = named "identifier" $ terminal \case
-  TokenIdentifier (discardOffset -> a) -> Just a
+  TokenIdentifier (discardLocation -> a) -> Just a
   _ -> Nothing
 
 keyword :: Keyword -> Parser r ()
 keyword kw = named name $ terminal \case
-  TokenKeyword (discardOffset -> k) | kw == k -> Just ()
+  TokenKeyword (discardLocation -> k) | kw == k -> Just ()
   _ -> Nothing
   where
     name = case kw of
@@ -350,7 +354,7 @@ keyword kw = named name $ terminal \case
 
 operator :: Operator -> Parser r Operator
 operator op = named name $ terminal \case
-  TokenOperator (discardOffset -> o) | op == o -> Just op
+  TokenOperator (discardLocation -> o) | op == o -> Just op
   _ -> Nothing
   where
     name = case op of
@@ -395,19 +399,19 @@ operators = choice . map operator
 
 attribute :: Parser r Attribute
 attribute = named "attribute" $ terminal \case
-  TokenAttribute (discardOffset -> a) -> Just a
+  TokenAttribute (discardLocation -> a) -> Just a
   _ -> Nothing
 
 simpleStringLiteral :: Parser r Text
 simpleStringLiteral = named "simple string literal" $ terminal \case
-  TokenString (discardOffset -> (d, s)) | d == "\"" -> Just s
+  TokenString (discardLocation -> (d, s)) | d == "\"" -> Just s
   _ -> Nothing
 
 stringLiteral :: Parser r Expression -> Parser r StringLiteral
 stringLiteral expr = named "string literal" $ fmap pure rawLiteral <|> interpolation
   where
     rawLiteral = named "raw string literal" $ terminal \case
-      TokenString (discardOffset -> (d, s)) -> Just (RawStringLiteral d s)
+      TokenString (discardLocation -> (d, s)) -> Just (RawStringLiteral d s)
       _ -> Nothing
     interpolation = named "interpolation" do
       terminal \case
@@ -430,12 +434,12 @@ stringLiteral expr = named "string literal" $ fmap pure rawLiteral <|> interpola
 
 integerLiteral :: Parser r Integer
 integerLiteral = named "integer literal" $ terminal \case
-  TokenInteger (discardOffset -> i) -> Just i
+  TokenInteger (discardLocation -> i) -> Just i
   _ -> Nothing
 
 floatLiteral :: Parser r Double
 floatLiteral = named "float literal" $ terminal \case
-  TokenFloat (discardOffset -> d) -> Just d
+  TokenFloat (discardLocation -> d) -> Just d
   _ -> Nothing
 
 

@@ -35,9 +35,8 @@ discardOffset (WithOffset (_, x)) = x
 
 data Location = Location
   { locFilename :: String
-  , locRow      :: Int
-  , locColumn   :: Int
-  , locCode     :: [String] -- FIXME: Text?
+  , locCode     :: [Text]
+  , locOffset   :: Int
   }
   deriving (Show)
 

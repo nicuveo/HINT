@@ -75,38 +75,32 @@ default-extensions:
   - ViewPatterns
 
 dependencies:
- - base
+  - base
+  - Earley
+  - containers
+  - extra
+  - megaparsec
+  - mtl
+  - parser-combinators
+  - text
+  - unordered-containers
 
 library:
   source-dirs: src
   other-modules:
     - Prelude
-  dependencies:
-    - Earley
-    - containers
-    - extra
-    - megaparsec
-    - mtl
-    - parser-combinators
-    - text
-    - unordered-containers
 
 executables:
   evalexpr:
     main: Main.hs
-    source-dirs: app
+    source-dirs: [src, app]
     dependencies:
       - haskeline
-      - hint
       - monad-loops
-      - mtl
-      - text
 
 tests:
   tests:
-    source-dirs:
-      - src
-      - test
+    source-dirs: [src, test]
     dependencies:
       - tasty
       - tasty-hunit

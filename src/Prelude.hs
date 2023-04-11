@@ -12,12 +12,12 @@ module Prelude
 --------------------------------------------------------------------------------
 -- Re-exports
 
-import Data.Bifunctor         as P (bimap)
 import Control.Applicative    as P (liftA2)
 import Control.Arrow          as P (first, left, second, (&&&), (***), (<<<),
                                     (>>>))
 import Control.Monad          as P (unless, void, when)
 import Control.Monad.Identity as P (Identity (..))
+import Data.Bifunctor         as P (bimap)
 import Data.Bool              as P (bool)
 import Data.Either            as P (lefts, partitionEithers, rights)
 import Data.Foldable          as P (asum, fold, foldMap', foldlM, foldrM, for_,
@@ -27,8 +27,8 @@ import Data.Functor           as P (($>), (<&>))
 import Data.HashMap.Strict    as P (HashMap, mapKeys)
 import Data.HashSet           as P (HashSet)
 import Data.List              as P (find, findIndex, foldl', group, intercalate,
-                                    intersect, lookup, sort, sortBy, sortOn,
-                                    union, unionBy, (\\))
+                                    intersect, intersperse, lookup, sort,
+                                    sortBy, sortOn, union, unionBy, (\\))
 import Data.List.NonEmpty     as P (NonEmpty (..), nonEmpty)
 import Data.Maybe             as P (catMaybes, fromMaybe, isJust, isNothing,
                                     listToMaybe, maybeToList)
