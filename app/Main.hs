@@ -23,7 +23,7 @@ main = runInputT defaultSettings $ whileJust_ readPrompt (lift . evalLine)
 
 readPrompt :: InputT IO (Maybe String)
 readPrompt = do
-  line <- getInputLine "λ "
+  line <- getInputLine "cue> "
   pure $ line >>= \l ->
     if | l == ":q" -> Nothing
        | otherwise -> Just l
