@@ -96,10 +96,11 @@ executables:
     main: Main.hs
     source-dirs: app
     dependencies:
-      - hint
       - haskeline
+      - hint
       - monad-loops
       - mtl
+      - text
 
 tests:
   tests:

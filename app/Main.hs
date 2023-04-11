@@ -2,19 +2,18 @@ module Main where
 
 import Prelude
 
-import Control.Arrow            (left)
 import Control.Monad.Loops
 import Control.Monad.Trans      (lift)
 import Data.Char
-import Data.Foldable
 import Data.Text                qualified as T
+import Data.Text.IO                qualified as T
 import System.Console.Haskeline
-import Text.Megaparsec          hiding (token)
+import System.Exit
 
 import Lang.Cue.Eval
-import Lang.Cue.Grammar
 import Lang.Cue.Parser
-import Lang.Cue.Printer
+import Lang.Cue.Lexer
+import Lang.Cue.Error
 
 
 main :: IO ()
@@ -33,25 +32,22 @@ evalLine (dropWhile isSpace -> l) = case l of
   (':' : c) -> do
     let (cmd, dropWhile isSpace -> expr) = break isSpace c
     case cmd of
-      "?" -> putStrLn "\
+      "?"   -> usage
+      "q"   -> exitSuccess
+      "tok" -> display $ tokenize "<interactive>" $ T.pack expr
+      "ast" -> display $ parse expression "<interactive>" $ T.pack expr
+      _     -> usage
+  _ -> display $ fmap eval $ parse expression "<interactive>" $ T.pack l
+  where
+    display :: Show a => Either [Error] a -> IO ()
+    display = either (T.putStrLn . foldMap errorMessage) print
+    usage = putStrLn "\
       \:?     print this help\n\
       \:q     quit this REPL\n\
       \:tok   tokenize the given expression \n\
       \:ast   parse and print the AST of the given expression"
-      "tok" -> case run tokenize expr of
-        Left e    -> putStr e
-        Right tks -> print tks
-      "ast" -> case run expression expr of
-        Left e  -> putStr e
-        Right a -> prettyPrint a
-      _ -> undefined
-  _ -> case run expression l of
-    Left e  -> putStr e
-    Right a -> putStrLn $ toString $ eval a
 
-run :: Parser a -> String -> Either String a
-run p i = left errorBundlePretty $ runParser (p <* eof) "<interactive>" (T.pack i)
-
+{-
 prettyPrint :: Expression -> IO ()
 prettyPrint = go 0
   where
@@ -97,3 +93,4 @@ prettyPrint = go 0
       OperandLiteral    l -> print l
       OperandName       i -> print i
       OperandExpression e -> pE n e
+-}

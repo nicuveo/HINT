@@ -21,7 +21,7 @@ import Lang.Cue.Tokens
 tokenize
   :: String -- file name
   -> Text   -- raw input
-  -> Either ParseError [Token WithOffset]
+  -> Either [Error] [Token WithOffset]
 tokenize = bimap undefined concat ... parse (skipToNextToken False *> many token <* eof)
 
 

@@ -31,7 +31,10 @@ panic = error . pp . \case
 --------------------------------------------------------------------------------
 -- * Parsing
 
-data ParseErrorCode
+data ErrorCode
   = LexerError
 
-type ParseError = WithLocation ParseErrorCode
+type Error = WithLocation ErrorCode
+
+errorMessage :: Error -> Text
+errorMessage _ = "lexer failed"

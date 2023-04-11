@@ -8,11 +8,11 @@ import "this" Prelude
 
 -- | A position within a file, measured in characters.
 newtype Offset = Offset Int
-  deriving (Show, Eq)
+  deriving (Show)
 
 -- | Functor that wraps a value with an offset.
 newtype WithOffset a = WithOffset (Offset, a)
-  deriving (Functor, Foldable, Traversable)
+  deriving (Show, Functor, Foldable, Traversable)
 
 class HasOffset a where
   getOffset :: a -> Int
@@ -39,9 +39,10 @@ data Location = Location
   , locColumn   :: Int
   , locCode     :: [String] -- FIXME: Text?
   }
+  deriving (Show)
 
 newtype WithLocation a = WithLocation (Location, a)
-  deriving (Functor, Foldable, Traversable)
+  deriving (Show, Functor, Foldable, Traversable)
 
 withLocation :: Location -> a -> WithLocation a
 withLocation = WithLocation ... (,)
