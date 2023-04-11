@@ -468,7 +468,11 @@ brackets :: Parser r a -> Parser r a
 brackets = between (operator OperatorBracketsOpen) (operator OperatorBracketsClose)
 
 commaList :: Parser r a -> Parser r [a]
-commaList p = p `sepBy` explicitComma <* optional explicitComma
+commaList p = fmap (fromMaybe []) $ optional do
+  x  <- p
+  xs <- many $ explicitComma *> p
+  optional explicitComma
+  pure (x:xs)
 
 
 --------------------------------------------------------------------------------
