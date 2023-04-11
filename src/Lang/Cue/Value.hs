@@ -8,7 +8,7 @@ import Lang.Cue.Tokens
 
 
 --------------------------------------------------------------------------------
--- Value
+-- * Value
 
 data CoreValue v
   = Type   Type
@@ -61,7 +61,7 @@ data Struct v = StructValue
 
 
 --------------------------------------------------------------------------------
--- Promotion
+-- * Promotion
 
 promote :: BaseValue -> Value
 promote = fmap absurd
@@ -72,7 +72,7 @@ demote = fromMaybe (panic DemoteBaseValue) . traverse (const Nothing)
 
 
 --------------------------------------------------------------------------------
--- Bottom
+-- * Bottom
 
 data BottomSource
   = ArisedFromLiteral
@@ -88,7 +88,7 @@ data BottomSource
 
 
 --------------------------------------------------------------------------------
--- Bounds checking
+-- * Bounds checking
 
 data OrderedBound a = OrderedBound
   { lowerBound :: EndPoint a
