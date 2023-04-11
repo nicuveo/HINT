@@ -6,18 +6,18 @@ module Lang.Cue.Printer
 
 import "this" Prelude
 
-import Data.Char
-import Data.List              (intersperse)
-import Data.List              qualified as L
-import Data.List.NonEmpty     qualified as NE
+-- import Data.Char
+-- import Data.List              (intersperse)
+-- import Data.List              qualified as L
+-- import Data.List.NonEmpty     qualified as NE
 import Data.Text              qualified as T
 import Data.Text.Lazy         (toStrict)
 import Data.Text.Lazy         qualified as TL
 import Data.Text.Lazy.Builder
 
-import Lang.Cue.Grammar
-import Lang.Cue.Tokens
-import Lang.Cue.Value
+-- import Lang.Cue.AST
+-- import Lang.Cue.Tokens
+-- import Lang.Cue.Value
 
 
 --------------------------------------------------------------------------------
@@ -35,6 +35,7 @@ displayLazy = toLazyText . build 0
 toString :: Printer a => a -> String
 toString = TL.unpack . displayLazy
 
+{-
 
 --------------------------------------------------------------------------------
 -- Base instances
@@ -53,21 +54,24 @@ instance Printer Bool where
   build _ True  = "true"
 
 
+-}
+
 --------------------------------------------------------------------------------
 -- Tokens
 
-instance Printer Token where
+{-
+instance Printer (Token Identity) where
   build i = \case
-    TokenIdentifier    x -> build i x
-    TokenKeyword       x -> build i x
-    TokenOperator      x -> build i x
-    TokenAttribute     x -> build i x
-    TokenInterpolation x -> buildString i $ Left  x
-    TokenString        x -> buildString i $ Right x
-    TokenInteger       x -> build i x
-    TokenFloat         x -> build i x
+    TokenIdentifier    (Identity x) -> build i x
+    TokenKeyword       (Identity x) -> build i x
+    TokenOperator      (Identity x) -> build i x
+    TokenAttribute     (Identity x) -> build i x
+    TokenInterpolation (Identity x) -> buildString i $ Left  x
+    TokenString        (Identity x) -> buildString i $ Right x
+    TokenInteger       (Identity x) -> build i x
+    TokenFloat         (Identity x) -> build i x
 
-instance Printer [Token] where
+instance Printer [Token Identity] where
   build i = withSpaces i
 
 instance Printer Identifier where
@@ -131,11 +135,13 @@ instance Printer InterpolationElement where
   build i = \case
     InterpolationString     t -> encodeText t
     InterpolationExpression e -> "\\(" <> build i e <> ")"
+-}
 
 
 --------------------------------------------------------------------------------
 -- AST
 
+{-
 instance Printer SourceFile where
   build i (SourceFile ident attribs imports decls) =
     mconcat $ map (<> "\n") $ concat
@@ -281,10 +287,13 @@ instance Printer ListLiteral where
       ]
     where
       indent = fromString $ replicate (2*i) ' '
+-}
 
 
 --------------------------------------------------------------------------------
 -- Value
+
+{-
 
 instance Printer Void where
   build = const absurd
@@ -392,3 +401,5 @@ encodeText = T.foldl' escapeChar mempty
            in if l <= 4
               then "\\u" <> fromString (replicate (4 - l) '0' <> h)
               else "\\U" <> fromString (replicate (8 - l) '0' <> h)
+
+-}
