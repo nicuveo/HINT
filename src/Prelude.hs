@@ -12,6 +12,7 @@ module Prelude
 --------------------------------------------------------------------------------
 -- Re-exports
 
+import Data.Bifunctor         as P (bimap)
 import Control.Applicative    as P (liftA2)
 import Control.Arrow          as P (first, left, second, (&&&), (***), (<<<),
                                     (>>>))
