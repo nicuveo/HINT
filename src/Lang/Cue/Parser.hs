@@ -36,11 +36,15 @@ parse
 parse grammar filename code = do
   tokens <- tokenize filename code
   case E.fullParses (E.parser grammar) tokens of
-    ([], Report {..}) -> Left $ pure $ case unconsumed of
-      []    -> mkLocation position ParserError
-      (t:_) -> mkLocation (getOffset t) ParserError
-    ([result], _)     -> Right result
-    _                 -> panic AmbiguousParse
+    ([], rep) -> Left $ pure $ case unconsumed rep of
+      []    -> mkLocation (T.length code) ParserError
+      (t:_) -> mkLocation (getOffset t)   ParserError
+    -- if there's more than one result, that means we've hit an ambiguity.
+    -- those are, however, unavoidable: for instance, we can't distinguish
+    -- between package attributes appearing before and after the package name
+    -- when the package name is missing. we therefore just keep the first
+    -- result.
+    (result : _, _) -> Right result
   where
     codeLines :: [Text]
     codeLines = T.lines code
