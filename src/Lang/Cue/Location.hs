@@ -38,7 +38,10 @@ data Location = Location
   , locCode     :: [Text]
   , locOffset   :: Int
   }
-  deriving (Show)
+
+-- | Show instance that hides the full content of the file.
+instance Show Location where
+  show (Location {..}) = "Location " <> show locFilename <> " " <> show locOffset
 
 newtype WithLocation a = WithLocation (Location, a)
   deriving (Show, Functor, Foldable, Traversable)
