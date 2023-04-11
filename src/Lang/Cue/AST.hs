@@ -16,8 +16,8 @@ data SourceFile = SourceFile
   } deriving (Show, Eq)
 
 data Import = Import
-  { importName  :: Maybe Identifier
-  , importPath  :: Text
+  { importName :: Maybe Identifier
+  , importPath :: Text
   } deriving (Show, Eq)
 
 data Declaration
@@ -117,14 +117,9 @@ data PrimaryExpression
 
 data Operand
   = OperandLiteral    Literal
-  | OperandName       QualifiedIdentifier
+  | OperandName       Identifier
   | OperandExpression Expression
   deriving (Show, Eq)
-
-data QualifiedIdentifier = QualifiedIdentifier
-  { qiPackageName :: Maybe Identifier
-  , qiIdentifier  :: Identifier
-  } deriving (Show, Eq)
 
 type StringLiteral = [StringElement]
 

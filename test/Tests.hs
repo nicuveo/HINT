@@ -87,11 +87,11 @@ edgeCasesTests =
   [ testCase "bottom is not a disjunction of identifiers" $ testParser expression "_|_" $
     Unary $ UnaryExpression [] $ PrimaryOperand $ OperandLiteral $ BottomLiteral
   , testCase "#foo is an identifier and not an invalid string literal" $ testParser expression "#foo" $
-    Unary $ UnaryExpression [] $ PrimaryOperand $ OperandName $ QualifiedIdentifier Nothing "#foo"
-  , testCase "foo.bar is ambiguous but interpreted as a qualified identifier" $ testParser expression "foo.bar" $
-    Unary $ UnaryExpression [] $ PrimaryOperand $ OperandName $ QualifiedIdentifier (Just "foo") "bar"
+    Unary $ UnaryExpression [] $ PrimaryOperand $ OperandName $ Identifier "#foo"
+  , testCase "foo.bar is technically ambiguous but interpreted as a selector" $ testParser expression "foo.bar" $
+    Unary $ UnaryExpression [] $ PrimarySelector (PrimaryOperand $ OperandName $ Identifier "foo") $ Left "bar"
   , testCase "(foo).bar is not ambiguous" $ testParser expression "(foo).bar" $
-    Unary $ UnaryExpression [] $ PrimarySelector (PrimaryOperand $ OperandExpression $ Unary $ UnaryExpression [] $ PrimaryOperand $ OperandName $ QualifiedIdentifier Nothing "foo") $ Left "bar"
+    Unary $ UnaryExpression [] $ PrimarySelector (PrimaryOperand $ OperandExpression $ Unary $ UnaryExpression [] $ PrimaryOperand $ OperandName $ Identifier "foo") $ Left "bar"
   ]
 
 --------------------------------------------------------------------------------

@@ -266,16 +266,8 @@ fullGrammar = mdo
     , OperandExpression <$> parens expression
     ]
 
-  operandName <- rule "operand name" $ choice
-    [ QualifiedIdentifier Nothing <$> identifier
-    , qualifiedIdentifier
-    ]
-
-  qualifiedIdentifier <- rule "qualified identifier" do
-    pn <- packageName
-    operator OperatorPeriod
-    ident <- identifier
-    pure $ QualifiedIdentifier (Just pn) ident
+  operandName <- rule "operand name"
+    identifier
 
   -- literal
 

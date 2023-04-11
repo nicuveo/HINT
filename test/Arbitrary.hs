@@ -338,10 +338,6 @@ instance Arbitrary Operand where
     OperandName       n -> OperandName       <$> shrink n
     OperandExpression e -> OperandExpression <$> shrink e
 
-instance Arbitrary QualifiedIdentifier where
-  arbitrary = QualifiedIdentifier
-    <$> arbitrary
-    <*> arbitrary
 
 --------------------------------------------------------------------------------
 -- Literals
