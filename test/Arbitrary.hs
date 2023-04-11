@@ -1,38 +1,65 @@
+{-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Arbitrary where
 
+import "this" Prelude
+
 import Control.Monad
-import Data.List.NonEmpty    (NonEmpty (..))
 import Data.List.NonEmpty    qualified as NE
-import Data.Text             (Text)
 import Data.Text             qualified as T
 import Test.Tasty.QuickCheck
 
-import Lang.Cue.Grammar
+import Lang.Cue.AST
+import Lang.Cue.Error
+import Lang.Cue.HKD
+import Lang.Cue.Location
+import Lang.Cue.Tokens
+
+
+--------------------------------------------------------------------------------
+-- Location
+
+instance Arbitrary a => Arbitrary (WithOffset a) where
+  arbitrary = liftA2 withOffset arbitrary arbitrary
+
+instance Arbitrary a => Arbitrary (WithLocation a) where
+  arbitrary = liftA2 withLocation arbitrary arbitrary
+
+instance Arbitrary Location where
+  arbitrary = Location
+    <$> arbitrary
+    <*> listOf arbitraryText
+    <*> arbitrary
 
 
 --------------------------------------------------------------------------------
 -- Tokens
 
-instance Arbitrary Token where
-  arbitrary = sized \s -> frequency $
-    let
-      a = min 1 s
-    in
-      [ (1, TokenInteger . getPositive <$> arbitrary)
-      , (1, TokenFloat   . getPositive <$> arbitrary)
-      , (1, TokenIdentifier    <$> arbitrary)
-      , (1, TokenKeyword       <$> arbitrary)
-      , (1, TokenOperator      <$> arbitraryTokenOperator)
-      , (1, TokenString        <$> arbitraryText)
-      , (a, TokenAttribute     <$> arbitrary)
-      ]
-  shrink = \case
-    TokenAttribute (Attribute name attrTokens) -> do
-      toks <- shrink attrTokens
-      pure $ TokenAttribute $ Attribute name toks
-    _ -> []
+instance
+  ( Arbitrary (HKD f Identifier)
+  , Arbitrary (HKD f Keyword)
+  , Arbitrary (HKD f Operator)
+  , Arbitrary (HKD f Attribute)
+  , Arbitrary (HKD f (String, Text))
+  , Arbitrary (HKD f (Positive Integer))
+  , Arbitrary (HKD f (Positive Double))
+  , Arbitrary (HKD f ())
+  , Functor f
+  ) => Arbitrary (Token f) where
+  arbitrary = oneof
+    [ TokenInteger . hmap @f @(Positive Integer) getPositive <$> arbitrary
+    , TokenFloat   . hmap @f @(Positive Double)  getPositive <$> arbitrary
+    , TokenIdentifier <$> arbitrary
+    , TokenKeyword    <$> arbitrary
+    , TokenOperator   <$> arbitrary
+    , TokenAttribute  <$> arbitrary
+    , do
+        og <- arbitrary :: Gen (HKD f ())
+        t  <- arbitraryText
+        let delim = "\"" :: String
+        pure $ TokenString $ hmap @f @() (const (delim, t)) og
+    ]
 
 instance Arbitrary Identifier where
   arbitrary = genName `suchThat` notAKeyword
@@ -61,21 +88,11 @@ instance Arbitrary Identifier where
 instance Arbitrary Keyword where
   arbitrary = elements [minBound .. maxBound]
 
-instance Arbitrary Attribute where
-  arbitrary = Attribute <$> arbitrary <*> arbitrary
+instance Arbitrary Operator where
+  arbitrary = elements [minBound .. maxBound]
 
-instance Arbitrary AttributeToken where
-  arbitrary = sized \s -> frequency
-    [ (6,       AttributeToken    <$> scale (`div` 2) arbitrary)
-    , (min 1 s, AttributeParens   <$> scale (`div` 5) arbitrary)
-    , (min 1 s, AttributeBraces   <$> scale (`div` 5) arbitrary)
-    , (min 1 s, AttributeBrackets <$> scale (`div` 5) arbitrary)
-    ]
-  shrink = \case
-    AttributeToken    t  -> []
-    AttributeParens   ts -> AttributeParens   <$> shrink ts
-    AttributeBraces   ts -> AttributeBraces   <$> shrink ts
-    AttributeBrackets ts -> AttributeBrackets <$> shrink ts
+instance Arbitrary Attribute where
+  arbitrary = Attribute <$> arbitrary <*> arbitraryText
 
 
 --------------------------------------------------------------------------------
@@ -97,7 +114,6 @@ instance Arbitrary Import where
   arbitrary = Import
     <$> arbitrary
     <*> arbitraryImport
-    <*> arbitrary
 
 instance Arbitrary Declaration where
   arbitrary = oneof
@@ -136,13 +152,13 @@ instance Arbitrary Label where
 
 instance Arbitrary LabelExpression where
   arbitrary = oneof
-    [ LabelString     <$> arbitraryStringLiteral <*> arbitrary
+    [ LabelString     <$> arbitraryText <*> arbitrary
     , LabelIdentifier <$> arbitrary <*> arbitrary
     , LabelConstraint <$> arbitrary
     ]
   shrink = \case
     LabelIdentifier _ _ -> []
-    LabelString     t o -> LabelString <$> shrinkStringLiteral t <*> pure o
+    LabelString     _ _ -> []
     LabelConstraint   c -> LabelConstraint <$> shrink c
 
 instance Arbitrary Optional where
@@ -237,39 +253,34 @@ instance Arbitrary Expression where
         case drop i l of
           []    -> Unary <$> arbitrary
           (o:z) -> do
-            l <- e z (d-1)
-            r <- e z (d-1)
-            v <- frequency
-              [ (4, pure [])
-              , (1, pure . Unary <$> arbitrary)
-              ]
-            pure $ o l r v
+            el <- e z (d-1)
+            er <- e z (d-1)
+            pure $ o el er
   shrink = \case
-    Unary ue              -> Unary <$> shrink ue
-    Multiplication l r vs -> sh Multiplication l r vs
-    Division       l r vs -> sh Division       l r vs
-    Addition       l r vs -> sh Addition       l r vs
-    Subtraction    l r vs -> sh Subtraction    l r vs
-    Equal          l r vs -> sh Equal          l r vs
-    NotEqual       l r vs -> sh NotEqual       l r vs
-    Match          l r vs -> sh Match          l r vs
-    NotMatch       l r vs -> sh NotMatch       l r vs
-    LessThan       l r vs -> sh LessThan       l r vs
-    LessOrEqual    l r vs -> sh LessOrEqual    l r vs
-    GreaterThan    l r vs -> sh GreaterThan    l r vs
-    GreaterOrEqual l r vs -> sh GreaterOrEqual l r vs
-    LogicalAnd     l r vs -> sh LogicalAnd     l r vs
-    LogicalOr      l r vs -> sh LogicalOr      l r vs
-    Unification    l r vs -> sh Unification    l r vs
-    Disjunction    l r vs -> sh Disjunction    l r vs
+    Unary ue           -> Unary <$> shrink ue
+    Multiplication l r -> sh Multiplication l r
+    Division       l r -> sh Division       l r
+    Addition       l r -> sh Addition       l r
+    Subtraction    l r -> sh Subtraction    l r
+    Equal          l r -> sh Equal          l r
+    NotEqual       l r -> sh NotEqual       l r
+    Match          l r -> sh Match          l r
+    NotMatch       l r -> sh NotMatch       l r
+    LessThan       l r -> sh LessThan       l r
+    LessOrEqual    l r -> sh LessOrEqual    l r
+    GreaterThan    l r -> sh GreaterThan    l r
+    GreaterOrEqual l r -> sh GreaterOrEqual l r
+    LogicalAnd     l r -> sh LogicalAnd     l r
+    LogicalOr      l r -> sh LogicalOr      l r
+    Unification    l r -> sh Unification    l r
+    Disjunction    l r -> sh Disjunction    l r
     where
-      sh c l r vs =
+      sh c l r =
         -- sub-expressions
-        l : r : vs <> concat
+        [l, r] <> concat
         -- same operator, simplified sub-expression
-        [ c <$> shrink l <*> pure   r <*> pure   vs
-        , c <$> pure   l <*> shrink r <*> pure   vs
-        , c <$> pure   l <*> pure   r <*> shrink vs
+        [ c <$> shrink l <*> pure   r
+        , c <$> pure   l <*> shrink r
         ]
 
 instance Arbitrary UnaryExpression where
@@ -304,6 +315,7 @@ instance Arbitrary PrimaryExpression where
     PrimaryIndex pe x -> sh PrimaryIndex pe x
     PrimarySlice pe x -> sh PrimarySlice pe x
     PrimaryCall  pe x -> sh PrimaryCall  pe x
+    _                 -> unreachable
     where
       sh c pe x =
         -- remove the suffix
@@ -338,24 +350,23 @@ instance Arbitrary Literal where
   arbitrary = sized \s -> oneof $ concat
     [ [ IntegerLiteral . getPositive <$> arbitrary
       , FloatLiteral   . getPositive <$> arbitrary
-      , StringLiteral  . Right       <$> arbitraryText
       , BoolLiteral                  <$> arbitrary
       , pure NullLiteral
       , pure BottomLiteral
       ]
-    , guard (s>0) *>
-      [ StringLiteral . Left  <$> scale (`div` 5) arbitraryInterpolation
-      , ListLiteral           <$> scale (`div` 5) arbitrary
-      , StructLiteral         <$> scale (`div` 5) arbitrary
+    , guard (s > 0) *>
+      [ StringLiteral <$> scale (`div` 5) arbitraryStringLiteral
+      , StructLiteral <$> scale (`div` 5) arbitrary
+      , ListLiteral   <$> scale (`div` 5) arbitrary
       ]
     ]
   shrink = \case
-    StringLiteral (Left interpolation) ->
-      StringLiteral . Left <$> shrinkInterpolation interpolation
-    ListLiteral l ->
-      ListLiteral <$> shrink l
+    StringLiteral sl ->
+      StringLiteral <$> shrinkStringLiteral sl
     StructLiteral s ->
       StructLiteral <$> shrink s
+    ListLiteral l ->
+      ListLiteral   <$> shrink l
     _ -> []
 
 instance Arbitrary ListLiteral where
@@ -390,29 +401,15 @@ arbitraryNonEmpty :: Arbitrary a => Gen (NonEmpty a)
 arbitraryNonEmpty = NE.fromList <$> listOf1 arbitrary
 
 arbitraryStringLiteral :: Gen StringLiteral
-arbitraryStringLiteral = oneof
-  [ Left  <$> arbitraryInterpolation
-  , Right <$> arbitraryText
+arbitraryStringLiteral = listOf $ oneof
+  [ Interpolation <$> arbitrary
+  , RawStringLiteral "\"" <$> arbitraryText
   ]
 
 shrinkStringLiteral :: StringLiteral -> [StringLiteral]
-shrinkStringLiteral = \case
-  Left  i -> Left <$> shrinkInterpolation i
-  Right _ -> []
-
-arbitraryInterpolation :: Gen Interpolation
-arbitraryInterpolation = do
-  a <- arbitraryText1
-  b <- arbitrary
-  c <- arbitraryText1
-  pure [InterpolationString a, InterpolationExpression b, InterpolationString c]
-
-shrinkInterpolation :: Interpolation -> [Interpolation]
-shrinkInterpolation = \case
-  [InterpolationString a, InterpolationExpression b, InterpolationString c] -> do
-    b' <- shrink b
-    pure [InterpolationString a, InterpolationExpression b', InterpolationString c]
-  _ -> error "invalid interpolation"
+shrinkStringLiteral = shrinkList \case
+  Interpolation e      -> Interpolation    <$> shrink e
+  RawStringLiteral _ _ -> []
 
 arbitraryTokenOperator :: Gen Operator
 arbitraryTokenOperator = elements [OperatorAdd .. OperatorBottom]

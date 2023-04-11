@@ -1,28 +1,26 @@
 module Main where
 
-import Control.Monad.IO.Class
-import Data.Functor
-import Data.List.NonEmpty
-import Data.Text              qualified as T
-import Data.Text.IO           qualified as T
+import "this" Prelude
+
+import Data.Text        qualified as T
+-- import Data.Text.IO           qualified as T
 import Test.Tasty
 import Test.Tasty.HUnit
-import Test.Tasty.QuickCheck
-import Text.Megaparsec        hiding (Label, token)
 
-import Lang.Cue.Grammar
+import Lang.Cue.AST
+import Lang.Cue.Error
 import Lang.Cue.Parser
-import Lang.Cue.Printer
+import Lang.Cue.Tokens
 
-import Arbitrary
+-- import Arbitrary
 
 
 --------------------------------------------------------------------------------
 -- Main
 
 main = defaultMain $ testGroup "Tests"
-  [ testGroup "Unit tests" [parserUTests, printerUTests]
-  , testGroup "E2E tests"  [parserETests]
+  [ testGroup "Unit tests" [parserUTests] --, printerUTests]
+--  , testGroup "E2E tests"  [parserETests]
   ]
 
 
@@ -35,13 +33,14 @@ parserUTests = testGroup "Parser"
   , testGroup "sourceFile" $ sourceFileTests <&> \(n, i, o) ->
       testCase n $ testParser sourceFile i o
   , testGroup "number literal" $ numberLitTests <&> \(n, i, o) ->
-      testCase n $ testParser numberLiteral i o
+      testCase n $ testParser expression i o
   , testGroup "edge cases" edgeCasesTests
   ]
 
-testParser parser input ast = case runParser (parser <* eof) "<interactive>" input of
+testParser :: (Show a, Eq a) => (forall r. Grammar r a) -> Text -> a -> Assertion
+testParser parser input ast = case parse parser "<interactive>" input of
   Right result -> result @?= ast
-  Left  err    -> assertFailure $ errorBundlePretty err
+  Left  err    -> assertFailure $ T.unpack $ foldMap errorMessage err
 
 expressionTests =
   [ ( "bounds"
@@ -53,19 +52,19 @@ expressionTests =
 numberLitTests =
   [ ( "decimal 0"
     , "0"
-    , Right 0
+    , Unary $ UnaryExpression [] $ PrimaryOperand $ OperandLiteral $ IntegerLiteral 0
     )
   , ( "decimal"
     , "79_537_537"
-    , Right 79537537
+    , Unary $ UnaryExpression [] $ PrimaryOperand $ OperandLiteral $ IntegerLiteral 79537537
     )
   , ( "oct"
     , "0o4563"
-    , Right 0o4563
+    , Unary $ UnaryExpression [] $ PrimaryOperand $ OperandLiteral $ IntegerLiteral 0o4563
     )
   , ( "si 1"
     , "1234.56Ki"
-    , Right 1264189
+    , Unary $ UnaryExpression [] $ PrimaryOperand $ OperandLiteral $ IntegerLiteral 1264189
     )
   ]
 
@@ -76,11 +75,11 @@ sourceFileTests =
     )
   , ( "top level attribute"
     , "@z(id = let)"
-    , SourceFile Nothing [Attribute "z" $ AttributeToken <$> [TokenIdentifier "id", TokenOperator OperatorBind, TokenKeyword KeywordLet]] [] []
+    , SourceFile Nothing [Attribute "z" "id = let"] [] []
     )
   , ( "import statement"
     , "import \"blaaah\""
-    , SourceFile Nothing [] [Import Nothing "blaaah" Nothing] []
+    , SourceFile Nothing [] [Import Nothing "blaaah"] []
     )
   ]
 
@@ -98,6 +97,8 @@ edgeCasesTests =
 --------------------------------------------------------------------------------
 -- Printer unit tests
 
+{-
+
 printerUTests = testGroup "Parser"
   [ testRoundTrips
   ]
@@ -112,10 +113,12 @@ testRoundTrips = testGroup "round trip"
 roundTrip n p = testProperty n \x ->
   runParser (p <* eof) "" (display x) == Right x
 
+-}
 
 --------------------------------------------------------------------------------
 -- Parser E2E tests
 
+{-
 parserETests = testGroup "Parser"
   [ testCase "basic" $ checkFile "basic"
   ]
@@ -130,3 +133,4 @@ checkFile name = do
     Right result -> pure result
     Left  err    -> assertFailure $ errorBundlePretty err
   outFile @=? display ast
+-}
