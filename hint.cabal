@@ -26,17 +26,14 @@ library
       Lang.Cue.AST
       Lang.Cue.Document
       Lang.Cue.Error
-      Lang.Cue.Eval
       Lang.Cue.HKD
       Lang.Cue.Lexer
       Lang.Cue.Location
       Lang.Cue.NoShow
-      Lang.Cue.Operation
       Lang.Cue.Package
       Lang.Cue.Parser
       Lang.Cue.Printer
       Lang.Cue.Tokens
-      Lang.Cue.Value
   other-modules:
       Prelude
   hs-source-dirs:
@@ -101,17 +98,14 @@ executable evalexpr
       Lang.Cue.AST
       Lang.Cue.Document
       Lang.Cue.Error
-      Lang.Cue.Eval
       Lang.Cue.HKD
       Lang.Cue.Lexer
       Lang.Cue.Location
       Lang.Cue.NoShow
-      Lang.Cue.Operation
       Lang.Cue.Package
       Lang.Cue.Parser
       Lang.Cue.Printer
       Lang.Cue.Tokens
-      Lang.Cue.Value
       Prelude
       Paths_hint
   hs-source-dirs:
@@ -180,17 +174,14 @@ test-suite tests
       Lang.Cue.AST
       Lang.Cue.Document
       Lang.Cue.Error
-      Lang.Cue.Eval
       Lang.Cue.HKD
       Lang.Cue.Lexer
       Lang.Cue.Location
       Lang.Cue.NoShow
-      Lang.Cue.Operation
       Lang.Cue.Package
       Lang.Cue.Parser
       Lang.Cue.Printer
       Lang.Cue.Tokens
-      Lang.Cue.Value
       Prelude
       Arbitrary
       Paths_hint
