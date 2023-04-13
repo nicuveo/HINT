@@ -32,3 +32,5 @@ Questions to ask to the CUE community:
   - [ ] the grammar seems to be technically ambiguous, does it matter?
     - [ ] `foo.bar` is either a qualified identifier or a selector
     - [ ] we can't distinguish between attributes before or after a missing package name
+  - [ ] playground allows attributes on imports?
+  - [ ] playground discards attributes before package name
