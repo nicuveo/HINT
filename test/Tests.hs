@@ -66,6 +66,10 @@ numberLitTests =
     , "1234.56Ki"
     , Unary $ UnaryExpression [] $ PrimaryOperand $ OperandLiteral $ IntegerLiteral 1264189
     )
+  , ( "float without leading 0"
+    , ".3"
+    , Unary $ UnaryExpression [] $ PrimaryOperand $ OperandLiteral $ FloatLiteral 0.3
+    )
   ]
 
 sourceFileTests =

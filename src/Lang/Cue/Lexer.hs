@@ -70,11 +70,11 @@ tokenize filename code =
 
 token :: Lexer [Token WithOffset]
 token = label "token" $ choice
-  [ pure . TokenOperator <$> operator
-  , pure . TokenAttribute <$> attribute
-  , try stringLiteral
+  [ try stringLiteral
   , pure . either TokenKeyword TokenIdentifier . flipE <$> identifierOrKeyword
   , pure . either TokenFloat TokenInteger      . flipE <$> numberLiteral
+  , pure . TokenAttribute <$> attribute
+  , pure . TokenOperator <$> operator
   , fail "did not find a valid token"
   ]
 
