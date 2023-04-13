@@ -79,6 +79,7 @@ dependencies:
   - Earley
   - containers
   - extra
+  - hashable
   - megaparsec
   - mtl
   - parser-combinators

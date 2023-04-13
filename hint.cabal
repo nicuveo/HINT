@@ -24,6 +24,7 @@ source-repository head
 library
   exposed-modules:
       Lang.Cue.AST
+      Lang.Cue.Document
       Lang.Cue.Error
       Lang.Cue.Eval
       Lang.Cue.HKD
@@ -31,6 +32,7 @@ library
       Lang.Cue.Location
       Lang.Cue.NoShow
       Lang.Cue.Operation
+      Lang.Cue.Package
       Lang.Cue.Parser
       Lang.Cue.Printer
       Lang.Cue.Tokens
@@ -85,6 +87,7 @@ library
     , base
     , containers
     , extra
+    , hashable
     , megaparsec
     , mtl
     , parser-combinators
@@ -96,6 +99,7 @@ executable evalexpr
   main-is: Main.hs
   other-modules:
       Lang.Cue.AST
+      Lang.Cue.Document
       Lang.Cue.Error
       Lang.Cue.Eval
       Lang.Cue.HKD
@@ -103,6 +107,7 @@ executable evalexpr
       Lang.Cue.Location
       Lang.Cue.NoShow
       Lang.Cue.Operation
+      Lang.Cue.Package
       Lang.Cue.Parser
       Lang.Cue.Printer
       Lang.Cue.Tokens
@@ -158,6 +163,7 @@ executable evalexpr
     , base
     , containers
     , extra
+    , hashable
     , haskeline
     , megaparsec
     , monad-loops
@@ -172,6 +178,7 @@ test-suite tests
   main-is: Tests.hs
   other-modules:
       Lang.Cue.AST
+      Lang.Cue.Document
       Lang.Cue.Error
       Lang.Cue.Eval
       Lang.Cue.HKD
@@ -179,6 +186,7 @@ test-suite tests
       Lang.Cue.Location
       Lang.Cue.NoShow
       Lang.Cue.Operation
+      Lang.Cue.Package
       Lang.Cue.Parser
       Lang.Cue.Printer
       Lang.Cue.Tokens
@@ -235,6 +243,7 @@ test-suite tests
     , base
     , containers
     , extra
+    , hashable
     , megaparsec
     , mtl
     , parser-combinators
