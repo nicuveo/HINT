@@ -499,6 +499,7 @@ inlineRule = E.rule
 discardEOF :: Parser r a -> Parser r a
 discardEOF = (<* optional eof)
 
+
 --------------------------------------------------------------------------------
 -- * AST helpers
 
