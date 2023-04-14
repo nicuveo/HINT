@@ -2,7 +2,7 @@ module Lang.Cue.Package where
 
 import "this" Prelude
 
-import Document
+import Lang.Cue.Document
 
 
 --------------------------------------------------------------------------------
@@ -12,5 +12,5 @@ data Package = Package
   { pkgName       :: Text
   , pkgDocument   :: Document
   , pkgAttributes :: Attributes
-  , pkgFunctions  :: Hashmap Text Function
+  , pkgFunctions  :: HashMap Text Function
   }

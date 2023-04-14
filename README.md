@@ -21,14 +21,11 @@ TODO:
   - AST
     - [ ] carry location throughout the AST
   - Evaluation
-    - [ ] everything
+    - [ ] can i make thunks `Void` when a value is concrete?
 
 Questions to ask to the CUE community:
   - [ ] the go implementation accepts tokens that are not mentioned in the documentation, such as the power operator `^` and the arrow operator `<-`; are those only supported for the sake of attributes?
   - [ ] ask about newlines in string interpolations
-  - [ ] ask about clarifications on default values:
-    - [ ] do they unify for arithmetic operations, or just at the end when computing the result?
-    - [ ] do boolean operations distribute like arithmetic operations do?
   - [ ] the grammar seems to be technically ambiguous, does it matter?
     - [ ] `foo.bar` is either a qualified identifier or a selector
     - [ ] we can't distinguish between attributes before or after a missing package name

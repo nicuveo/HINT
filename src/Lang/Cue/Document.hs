@@ -18,12 +18,14 @@ import "this" Prelude
 -- (recoverable) evaluation errors.
 data Document
   -- structure
-  = Atom   Atom
-  | Bound  Bound
-  | List   List
-  | Struct Struct
+  = DocAtom     Atom
+  | DocBound    Bound
+  | DocList     (List Document)
+  | DocStruct   Struct
+  | DocFunction Function
+  | DocType     Type
   -- unevaluated
-  | Thunk  Thunk
+  | DocThunk    Thunk
   deriving (Show, Eq)
 
 
@@ -70,6 +72,38 @@ data EndPoint
 
 
 --------------------------------------------------------------------------------
+-- * Types
+
+-- | A type is a special value that represents the set of all possible values of
+-- that given type. It unifies with atoms of that type, and can be used as a
+-- constraint. It only arises from use of the reserved identifiers.
+data Type
+  = BooleanType
+  | IntegerType
+  | FloatType
+  | StringType
+  | BytesType
+  deriving (Show, Eq)
+
+
+--------------------------------------------------------------------------------
+-- * Function
+
+-- | All functions are built-ins, since there isn't any syntax in the language
+-- to define custom ones.
+data Function = Function
+  { functionName :: Text
+  , functionBody :: [Document] -> Document
+  }
+
+instance Show Function where
+  show (Function n _) = "Function " ++ show n
+
+instance Eq Function where
+  (==) = (==) `on` functionName
+
+
+--------------------------------------------------------------------------------
 -- * List
 
 -- | List of documents.
@@ -80,9 +114,13 @@ data EndPoint
 --
 -- A list can still be concrete even with an ellipsis: the ellipsis just gets
 -- ignored when reifying.
-data List = List
-  { listElements   :: [Document]
-  , listConstraint :: Maybe Document
+--
+-- The structure of a list being the same for concrete and unresolved values,
+-- this type uses the @v@ type parameter to choose what kind of data the list
+-- contains.
+data List v = List
+  { listElements   :: [v]
+  , listConstraint :: Maybe v
   } deriving (Show, Eq)
 
 
@@ -95,16 +133,24 @@ data List = List
 -- they will resolve in fields being added to the struct. But even when we have
 -- the list of fields, we need to keep the list of locally declared expressions
 -- so that we can finish evaluating thunks in sub-fields.
-data Struct = Struct
-  { structFields      :: HashMap FieldLabel Field
-  , structConstraints :: [(Document, Document)]
-  , structAliases     :: HashMap Text Document
-  , structAttributes  :: Attributes
+--
+-- The structure of a struct being the same for concrete and unresolved values,
+-- this type uses the @v@ type parameter to choose what kind of data the list
+-- contains, and use the @e@ paran for unresolved embeddings.
+data Definitions v e = Definitions
+  { defFields      :: HashMap FieldLabel (Field v)
+  , defConstraints :: [(v, v)]
+  , defAliases     :: HashMap Text v
+  , defAttributes  :: Attributes
+  , defEmbeddings  :: [e]
   } deriving (Show, Eq)
 
-data Field = Field
+type Struct = Definitions Document Void
+type Block  = Definitions Thunk    Embedding
+
+data Field v = Field
   { fieldAlias      :: Maybe Text
-  , fieldValue      :: Document
+  , fieldValue      :: v
   , fieldAttributes :: Attributes
   } deriving (Show, Eq)
 
@@ -116,14 +162,18 @@ data Field = Field
 data FieldLabel = FieldLabel
   { labelName :: Text
   , labelType :: FieldType
-  } deriving (Show, Eq, Ord, Hashable)
+  } deriving (Show, Eq, Ord, Generic)
+
+instance Hashable FieldLabel
 
 data FieldType
   = Regular
   | Definition
   | Hidden
   | HiddenDefinition
-  deriving (Show, Eq, Ord, Hashable)
+  deriving (Show, Eq, Ord, Enum, Bounded, Generic)
+
+instance Hashable FieldType
 
 
 --------------------------------------------------------------------------------
@@ -161,9 +211,36 @@ data Thunk
   | Subtraction    Thunk Thunk
   | Multiplication Thunk Thunk
   | Division       Thunk Thunk
-  -- terms
-  | NumId  Thunk
-  | Negate Thunk
+
+  -- unary operations
+  | NumId              Thunk
+  | Negate             Thunk
+  | LogicalNot         Thunk
+  | IsNotEqualTo       Thunk
+  | Matches            Thunk
+  | Doesn'tMatch       Thunk
+  | IsLessThan         Thunk
+  | IsLessOrEqualTo    Thunk
+  | IsGreaterThan      Thunk
+  | IsGreaterOrEqualTo Thunk
+
+  -- primary
+  | Select Thunk FieldLabel
+  | Index  Thunk Thunk
+  | Slice  Thunk Thunk Thunk
+  | Call   Thunk [Thunk]
+
+  -- groups
+  | ListLiteral (List Thunk)
+  | Block       Block
+
+  -- literals
+  | Package   Text
+  | Reference FieldLabel
+  | Leaf      Atom
+  | Top
+  | Bottom
+
   deriving (Show, Eq)
 
 -- | We group all disjunctions together, since we need to distinguish between:
@@ -176,51 +253,17 @@ data Thunk
 type Disjunction = Seq (Bool, Thunk)
 
 
--- | Unevaluated term of an expression.
-data Term
-  = 
+--------------------------------------------------------------------------------
+-- * Embeddings
 
-
-
-data UnaryExpression = UnaryExpression
-  { ueOperators         :: [Operator]
-  , uePrimaryExpression :: PrimaryExpression
-  }
+data Embedding
+  = Comprehension (NonEmpty Clause) Block
+  | InlineThunk   Thunk
   deriving (Show, Eq)
 
-data PrimaryExpression
-  = PrimaryOperand  Operand
-  | PrimarySelector PrimaryExpression (Either Identifier Text)
-  | PrimaryIndex    PrimaryExpression Expression
-  | PrimarySlice    PrimaryExpression (Expression, Expression)
-  | PrimaryCall     PrimaryExpression [Expression]
-  deriving (Show, Eq)
-
-data Operand
-  = OperandLiteral    Literal
-  | OperandName       Identifier
-  | OperandExpression Expression
-  deriving (Show, Eq)
-
-type StringLiteral = [StringElement]
-
-data StringElement
-  = RawStringLiteral String Text
-  | Interpolation Expression
-  deriving (Show, Eq)
-
-data Literal
-  = IntegerLiteral Integer
-  | FloatLiteral Double
-  | StringLiteral StringLiteral
-  | BoolLiteral Bool
-  | NullLiteral
-  | BottomLiteral
-  | ListLiteral ListLiteral
-  | StructLiteral [Declaration]
-  deriving (Show, Eq)
-
-data ListLiteral
-  = ClosedList [Embedding]
-  | OpenList   [Embedding] Ellipsis
+data Clause
+  = For        Text      Thunk
+  | IndexedFor Text Text Thunk
+  | If                   Thunk
+  | Let        Text      Thunk
   deriving (Show, Eq)

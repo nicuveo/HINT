@@ -83,7 +83,6 @@ library
       Earley
     , base
     , containers
-    , extra
     , hashable
     , megaparsec
     , mtl
@@ -156,7 +155,6 @@ executable evalexpr
       Earley
     , base
     , containers
-    , extra
     , hashable
     , haskeline
     , megaparsec
@@ -233,7 +231,6 @@ test-suite tests
       Earley
     , base
     , containers
-    , extra
     , hashable
     , megaparsec
     , mtl

@@ -78,9 +78,9 @@ dependencies:
   - base
   - Earley
   - containers
-  - extra
   - hashable
   - megaparsec
+  - monad-validate
   - mtl
   - parser-combinators
   - text
