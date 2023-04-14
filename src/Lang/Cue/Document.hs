@@ -18,14 +18,20 @@ import "this" Prelude
 -- (recoverable) evaluation errors.
 data Document
   -- structure
-  = DocAtom     Atom
-  | DocBound    Bound
-  | DocList     (List Document)
-  | DocStruct   Struct
-  | DocFunction Function
-  | DocType     Type
+  = Atom      Atom
+  | List      (ListInfo Document)
+  | Struct    Struct
+  -- conditions
+  | NotNull
+  | BoolBound    (Bound Bool    Void    Void)
+  | IntegerBound (Bound Integer Integer Void)
+  | FloatBound   (Bound Float   Float   Void)
+  | StringBound  (Bound Text    Text    Text)
+  | BytesBound   (Bound Text    Text    Void)
+  | Type         Type
   -- unevaluated
-  | DocThunk    Thunk
+  | Func      Function
+  | DocThunk  Thunk
   deriving (Show, Eq)
 
 
@@ -48,26 +54,34 @@ data Atom
 -- * Bounds
 
 -- | Bounds represent conditions on values. They unify with a value by returning
--- the value if it matches the condition, by throwing an error otherwise.
-data Bound = Bound
+-- the value if it matches the condition, by throwing an error otherwise. This
+-- type is generic and contains the union of all possible type-specific tests
+-- for a given type. Specific types can deactivate some of the tests by using
+-- 'Void'.
+--
+-- Parameters:
+--   * @e@ is the type of values in the Equality checks
+--   * @o@ is the type of values in the bounds (Ordering)
+--   * @r@ is the type of values in the Regex clauses
+data Bound e o r = Bound
   { -- | lower bound (if any)
-    minBound    :: EndPoint
+    minBound    :: EndPoint o
   , -- | upper bound (if any)
-    maxBound    :: EndPoint
+    maxBound    :: EndPoint o
   , -- | excluded values
-    different   :: [Document]
+    different   :: [e]
   , -- | regex match
-    matchesAll  :: [Document]
+    matchesAll  :: [r]
   , -- | regex non-match
-    matchesNone :: [Document]
+    matchesNone :: [r]
   }
   deriving (Show, Eq)
 
 -- | Bound for an ordered value.
-data EndPoint
+data EndPoint o
   = Open
-  | Inclusive Document
-  | Exclusive Document
+  | Inclusive o
+  | Exclusive o
   deriving (Show, Eq)
 
 
@@ -79,6 +93,7 @@ data EndPoint
 -- constraint. It only arises from use of the reserved identifiers.
 data Type
   = BooleanType
+  | NumberType
   | IntegerType
   | FloatType
   | StringType
@@ -118,7 +133,7 @@ instance Eq Function where
 -- The structure of a list being the same for concrete and unresolved values,
 -- this type uses the @v@ type parameter to choose what kind of data the list
 -- contains.
-data List v = List
+data ListInfo v = ListInfo
   { listElements   :: [v]
   , listConstraint :: Maybe v
   } deriving (Show, Eq)
@@ -143,6 +158,7 @@ data Definitions v e = Definitions
   , defAliases     :: HashMap Text v
   , defAttributes  :: Attributes
   , defEmbeddings  :: [e]
+  , defCanBeAtom   :: Bool
   } deriving (Show, Eq)
 
 type Struct = Definitions Document Void
@@ -231,10 +247,10 @@ data Thunk
   | Call   Thunk [Thunk]
 
   -- groups
-  | ListLiteral (List Thunk)
+  | ListLiteral (ListInfo Thunk)
   | Block       Block
 
-  -- literals
+  -- leaves
   | Package   Text
   | Reference FieldLabel
   | Leaf      Atom
