@@ -275,7 +275,7 @@ type Disjunction = Seq (Bool, Thunk)
 --     a: {
 --       b: number
 --       c: {
---         d: b -- ^ refers to a.b
+--         d: b // refers to a.b
 --         e: d + 1
 --       }
 --     }
@@ -283,12 +283,12 @@ type Disjunction = Seq (Bool, Thunk)
 --       d: 0
 --     }
 --
--- if we kept the @b@ reference relative in the definition of @a.b.c@ we would
--- not have a @b@ in scope when evaluating the definition of @a.c@ in the
--- context of @e@:
+-- if we substitue @a.c@ by its definition in the expression for @f@ and we keep
+-- the @b@ reference relative, we do not have a @b@ in scope when evaluating
+-- @f@:
 --
 --     f: {
---       d: b -- whoops!
+--       d: b // whoops!
 --       e: d + 1
 --     } & {
 --       d: 0
@@ -297,21 +297,21 @@ type Disjunction = Seq (Bool, Thunk)
 -- hence keeping an absolute reference to @a.b@ when generating the thunk.
 -- However! We *also* need to keep a relative path so that we can do reference
 -- substitution. If, in the previous example, we inline the definition of @c@
--- without altering its inner references, we get:
+-- using absolute paths but without altering its inner references, we get:
 --
 --     f: {
 --       d: a.b
---       e: a.c.d + 1 -- whoops
+--       e: a.c.d + 1 // whoops!
 --     } & {
 --       d: 0
 --     }
 --
--- so we keep *both*, when we inline @a.c@ in the definition of @f@, we can keep
+-- so we keep *both*! When we inline @a.c@ in the definition of @f@, we can keep
 -- all "outer" references, and replace all the inner ones, to finally obtain:
 --
 --     f: {
---       d: a.b     -- points back to the "outer" original value
---       e: f.d + 1 -- points to the new local field
+--       d: a.b     // points back to the "outer" original value
+--       e: f.d + 1 // points to the new local field
 --     } & {
 --       d: 0
 --     }
