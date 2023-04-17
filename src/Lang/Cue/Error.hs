@@ -41,7 +41,8 @@ data ErrorInfo
   | ParserError
   deriving (Show)
 
-type Error = WithLocation ErrorInfo
+type Error  = WithLocation ErrorInfo
+type Errors = Seq Error
 
 errorMessage :: Error -> Text
 errorMessage (WithLocation (loc@Location {..}, e)) = case e of

@@ -5,7 +5,6 @@ module Arbitrary where
 
 import "this" Prelude
 
-import Control.Monad
 import Data.List.NonEmpty    qualified as NE
 import Data.Text             qualified as T
 import Test.Tasty.QuickCheck

@@ -10,7 +10,7 @@ import Lang.Cue.Document
 
 data Package = Package
   { pkgName       :: Text
-  , pkgDocument   :: Document
+  , pkgDocument   :: Thunk
   , pkgAttributes :: Attributes
   , pkgFunctions  :: HashMap Text Function
   }

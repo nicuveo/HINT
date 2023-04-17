@@ -10,18 +10,18 @@ import "this" Prelude
 -- document, except that any part of it might be left unevaluated, and each
 -- struct or field can be annotated.
 --
--- Compiling / validating the AST results in an evaluated document; evaluating
--- the document reduces it as much as possible, down to a concrete value if
--- possible, but leaving all unresolved elements as thunks.
+-- Compiling / validating the AST results in an evaluated document (see 'Thunk')
+-- evaluating the document reduces it as much as possible, down to a concrete
+-- value if possible, but leaving all unresolved elements as thunks.
 --
 -- Bottom is not represented as part of the document, since bottom represents
 -- (recoverable) evaluation errors.
 data Document
   -- structure
-  = Atom      Atom
-  | List      (ListInfo Document)
-  | Struct    Struct
-  -- conditions
+  = Atom         Atom
+  | List         (ListInfo Document)
+  | Struct       Struct
+  -- constraints
   | NotNull
   | BoolBound    (Bound Bool    Void    Void)
   | IntegerBound (Bound Integer Integer Void)
@@ -30,8 +30,7 @@ data Document
   | BytesBound   (Bound Text    Text    Void)
   | Type         Type
   -- unevaluated
-  | Func      Function
-  | DocThunk  Thunk
+  | Thunk        Thunk
   deriving (Show, Eq)
 
 
@@ -155,7 +154,7 @@ data ListInfo v = ListInfo
 data Definitions v e = Definitions
   { defFields      :: HashMap FieldLabel (Field v)
   , defConstraints :: [(v, v)]
-  , defAliases     :: HashMap Text v
+  , defAliases     :: HashMap FieldLabel (Either FieldLabel v)
   , defAttributes  :: Attributes
   , defEmbeddings  :: [e]
   , defCanBeAtom   :: Bool
@@ -251,8 +250,10 @@ data Thunk
   | Block       Block
 
   -- leaves
-  | Package   Text
-  | Reference FieldLabel
+  | Package   Thunk
+  | Func      Function
+  | Ref       Reference
+  | Alias     Text
   | Leaf      Atom
   | Top
   | Bottom
@@ -267,6 +268,62 @@ data Thunk
 -- We store it as a simple sequence of thunks, with a boolean indicating whether
 -- the thunk was labelled as being a default value.
 type Disjunction = Seq (Bool, Thunk)
+
+-- | To keep track of references, we change every identifier we encounter to be
+-- an absolute path instead of a relative path: consider the following example:
+--
+--     a: {
+--       b: number
+--       c: {
+--         d: b -- ^ refers to a.b
+--         e: d + 1
+--       }
+--     }
+--     f: a.c & {
+--       d: 0
+--     }
+--
+-- if we kept the @b@ reference relative in the definition of @a.b.c@ we would
+-- not have a @b@ in scope when evaluating the definition of @a.c@ in the
+-- context of @e@:
+--
+--     f: {
+--       d: b -- whoops!
+--       e: d + 1
+--     } & {
+--       d: 0
+--     }
+--
+-- hence keeping an absolute reference to @a.b@ when generating the thunk.
+-- However! We *also* need to keep a relative path so that we can do reference
+-- substitution. If, in the previous example, we inline the definition of @c@
+-- without altering its inner references, we get:
+--
+--     f: {
+--       d: a.b
+--       e: a.c.d + 1 -- whoops
+--     } & {
+--       d: 0
+--     }
+--
+-- so we keep *both*, when we inline @a.c@ in the definition of @f@, we can keep
+-- all "outer" references, and replace all the inner ones, to finally obtain:
+--
+--     f: {
+--       d: a.b     -- points back to the "outer" original value
+--       e: f.d + 1 -- points to the new local field
+--     } & {
+--       d: 0
+--     }
+--
+-- in practice, we don't need to keep the full relative path; we just need to
+-- know how many "steps up" are required before finding a common path between
+-- the "referent" and the "referee".
+data Reference = Reference
+  { refPath  :: [FieldLabel]
+  , refSteps :: Int
+  }
+  deriving (Show, Eq)
 
 
 --------------------------------------------------------------------------------
