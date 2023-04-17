@@ -31,3 +31,5 @@ Questions to ask to the CUE community:
     - [ ] we can't distinguish between attributes before or after a missing package name
   - [ ] playground allows attributes on imports?
   - [ ] playground discards attributes before package name
+  - [ ] why must aliases be used? the reference doesn't mention it
+  - [ ] the reference doesn't document reference renaming
