@@ -1,6 +1,10 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Lang.Cue.Document where
 
 import "this" Prelude
+
+import Control.Lens
 
 
 --------------------------------------------------------------------------------
@@ -152,12 +156,12 @@ data ListInfo v = ListInfo
 -- this type uses the @v@ type parameter to choose what kind of data the list
 -- contains, and use the @e@ paran for unresolved embeddings.
 data Definitions v e = Definitions
-  { defFields      :: HashMap FieldLabel (Field v)
-  , defConstraints :: [(v, v)]
-  , defAliases     :: HashMap FieldLabel (Either FieldLabel v)
-  , defAttributes  :: Attributes
-  , defEmbeddings  :: [e]
-  , defCanBeAtom   :: Bool
+  { _defAttributes  :: Attributes
+  , _defAliases     :: HashMap FieldLabel (Either FieldLabel v)
+  , _defEmbeddings  :: Seq e
+  , _defFields      :: HashMap FieldLabel (Field v)
+  , _defConstraints :: Seq (v, v)
+  , _defCanBeAtom   :: Bool
   } deriving (Show, Eq)
 
 type Struct = Definitions Document Void
@@ -199,7 +203,7 @@ instance Hashable FieldType
 --
 -- The same attribute name can appear more than one in a given scope, and we
 -- collect all of them in the order in which they appear.
-type Attributes = HashMap Text [Text]
+type Attributes = HashMap Text (Seq Text)
 
 
 --------------------------------------------------------------------------------
@@ -335,8 +339,18 @@ data Embedding
   deriving (Show, Eq)
 
 data Clause
-  = For        Text      Thunk
-  | IndexedFor Text Text Thunk
-  | If                   Thunk
-  | Let        Text      Thunk
+  = For FieldLabel Thunk
+  | IndexedFor FieldLabel FieldLabel Thunk
+  | If Thunk
+  | Let FieldLabel Thunk
   deriving (Show, Eq)
+
+
+--------------------------------------------------------------------------------
+-- Lens generation
+--
+-- We put all TH splices at the end of the file since it avoids the drawback of
+-- haivng them closer to the relevant type, namely that it makes declaration
+-- order within the file matter (which is unpleasant).
+
+makeLenses ''Definitions

@@ -84,7 +84,9 @@ library
       Earley
     , base
     , containers
+    , extra
     , hashable
+    , lens
     , megaparsec
     , monad-validate
     , mtl
@@ -159,8 +161,10 @@ executable evalexpr
       Earley
     , base
     , containers
+    , extra
     , hashable
     , haskeline
+    , lens
     , megaparsec
     , monad-loops
     , monad-validate
@@ -238,7 +242,9 @@ test-suite tests
       Earley
     , base
     , containers
+    , extra
     , hashable
+    , lens
     , megaparsec
     , monad-validate
     , mtl
