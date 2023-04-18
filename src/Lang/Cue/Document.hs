@@ -6,6 +6,9 @@ import "this" Prelude
 
 import Control.Lens
 
+import Lang.Cue.AST    (Optional)
+import Lang.Cue.Tokens
+
 
 --------------------------------------------------------------------------------
 -- * Document
@@ -24,7 +27,7 @@ data Document
   -- structure
   = Atom         Atom
   | List         (ListInfo Document)
-  | Struct       Struct
+  | Struct       StructInfo
   -- constraints
   | NotNull
   | BoolBound    (Bound Bool    Void    Void)
@@ -32,7 +35,6 @@ data Document
   | FloatBound   (Bound Float   Float   Void)
   | StringBound  (Bound Text    Text    Text)
   | BytesBound   (Bound Text    Text    Void)
-  | Type         Type
   -- unevaluated
   | Thunk        Thunk
   deriving (Show, Eq)
@@ -145,32 +147,25 @@ data ListInfo v = ListInfo
 --------------------------------------------------------------------------------
 -- * Struct
 
--- | Mapping from identifiers to sub-documents.
---
--- A struct's fields can only be resolved when all embeds are concrete, since
--- they will resolve in fields being added to the struct. But even when we have
--- the list of fields, we need to keep the list of locally declared expressions
--- so that we can finish evaluating thunks in sub-fields.
---
--- The structure of a struct being the same for concrete and unresolved values,
--- this type uses the @v@ type parameter to choose what kind of data the list
--- contains, and use the @e@ paran for unresolved embeddings.
-data Definitions v e = Definitions
-  { _defAttributes  :: Attributes
-  , _defAliases     :: HashMap FieldLabel (Either FieldLabel v)
-  , _defEmbeddings  :: Seq e
-  , _defFields      :: HashMap FieldLabel (Seq (Field v))
-  , _defConstraints :: Seq (v, v)
-  , _defCanBeAtom   :: Bool
+data StructInfo = StructInfo
+  { _siAttributes :: Attributes
+  , _siFields     :: HashMap FieldLabel (Field Document)
   } deriving (Show, Eq)
 
-type Struct = Definitions Document Void
-type Block  = Definitions Thunk    Embedding
+data BlockInfo = BlockInfo
+  { _biAttributes   :: Attributes
+  , _biAliases      :: HashMap FieldLabel (Maybe Thunk)
+  , _biIdentFields  :: HashMap FieldLabel (Seq (Field Thunk))
+  , _biStringFields :: Seq (Thunk, Field Thunk)
+  , _biEmbeddings   :: Seq Embedding
+  , _biConstraints  :: Seq (Thunk, Thunk)
+  , _biCanBeAtom    :: Bool
+  } deriving (Show, Eq)
 
 data Field v = Field
-  { fieldAlias      :: Maybe Text
+  { fieldAlias      :: Maybe FieldLabel
   , fieldValue      :: v
-  , fieldOptional   :: Bool
+  , fieldOptional   :: Optional
   , fieldAttributes :: Attributes
   } deriving (Show, Eq)
 
@@ -216,7 +211,7 @@ type Attributes = HashMap Text (Seq Text)
 data Thunk
   -- binary operations
   = Disjunction    Disjunction
-  | Unification    Thunk Thunk
+  | Unification    Unification
   | LogicalOr      Thunk Thunk
   | LogicalAnd     Thunk Thunk
   | Equal          Thunk Thunk
@@ -252,10 +247,14 @@ data Thunk
 
   -- groups
   | ListLiteral (ListInfo Thunk)
-  | Block       Block
+  | Block       BlockInfo
+
+  -- interpolation
+  | Interpolation TextInfo [Thunk]
 
   -- leaves
   | Package   Thunk
+  | Type      Type
   | Func      Function
   | Ref       Reference
   | Alias     Text
@@ -273,6 +272,9 @@ data Thunk
 -- We store it as a simple sequence of thunks, with a boolean indicating whether
 -- the thunk was labelled as being a default value.
 type Disjunction = Seq (Bool, Thunk)
+
+-- | We group all unifications together, for convenience.
+type Unification = Seq Thunk
 
 -- | To keep track of references, we change every identifier we encounter to be
 -- an absolute path instead of a relative path: consider the following example:
@@ -335,7 +337,7 @@ data Reference = Reference
 -- * Embeddings
 
 data Embedding
-  = Comprehension (NonEmpty Clause) Block
+  = Comprehension (NonEmpty Clause) BlockInfo
   | InlineThunk   Thunk
   deriving (Show, Eq)
 
@@ -354,4 +356,5 @@ data Clause
 -- haivng them closer to the relevant type, namely that it makes declaration
 -- order within the file matter (which is unpleasant).
 
-makeLenses ''Definitions
+makeLenses ''StructInfo
+makeLenses ''BlockInfo
