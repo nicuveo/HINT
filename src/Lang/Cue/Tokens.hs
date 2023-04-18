@@ -17,34 +17,34 @@ data Token f
   | TokenKeyword                (HKD f Keyword)
   | TokenOperator               (HKD f Operator)
   | TokenAttribute              (HKD f Attribute)
-  | TokenString                 (HKD f (String, Text))
+  | TokenString                 (HKD f (TextInfo, Text))
   | TokenInteger                (HKD f Integer)
   | TokenFloat                  (HKD f Double)
-  | TokenInterpolationBegin     (HKD f ())
-  | TokenInterpolationEnd       (HKD f ())
-  | TokenInterpolationExprBegin (HKD f ())
-  | TokenInterpolationExprEnd   (HKD f ())
+  | TokenInterpolationBegin     (HKD f TextInfo)
+  | TokenInterpolationEnd       (HKD f TextInfo)
+  | TokenInterpolationExprBegin (HKD f TextInfo)
+  | TokenInterpolationExprEnd   (HKD f TextInfo)
 
 instance FFunctor Token where
   ffmap f = \case
-    TokenIdentifier             x -> TokenIdentifier             (f @Identifier     x)
-    TokenKeyword                x -> TokenKeyword                (f @Keyword        x)
-    TokenOperator               x -> TokenOperator               (f @Operator       x)
-    TokenAttribute              x -> TokenAttribute              (f @Attribute      x)
-    TokenString                 x -> TokenString                 (f @(String, Text) x)
-    TokenInteger                x -> TokenInteger                (f @Integer        x)
-    TokenFloat                  x -> TokenFloat                  (f @Double         x)
-    TokenInterpolationBegin     x -> TokenInterpolationBegin     (f @()             x)
-    TokenInterpolationEnd       x -> TokenInterpolationEnd       (f @()             x)
-    TokenInterpolationExprBegin x -> TokenInterpolationExprBegin (f @()             x)
-    TokenInterpolationExprEnd   x -> TokenInterpolationExprEnd   (f @()             x)
+    TokenIdentifier             x -> TokenIdentifier             (f @Identifier       x)
+    TokenKeyword                x -> TokenKeyword                (f @Keyword          x)
+    TokenOperator               x -> TokenOperator               (f @Operator         x)
+    TokenAttribute              x -> TokenAttribute              (f @Attribute        x)
+    TokenString                 x -> TokenString                 (f @(TextInfo, Text) x)
+    TokenInteger                x -> TokenInteger                (f @Integer          x)
+    TokenFloat                  x -> TokenFloat                  (f @Double           x)
+    TokenInterpolationBegin     x -> TokenInterpolationBegin     (f @TextInfo         x)
+    TokenInterpolationEnd       x -> TokenInterpolationEnd       (f @TextInfo         x)
+    TokenInterpolationExprBegin x -> TokenInterpolationExprBegin (f @TextInfo         x)
+    TokenInterpolationExprEnd   x -> TokenInterpolationExprEnd   (f @TextInfo         x)
 
 instance
   ( Show (HKD f Identifier)
   , Show (HKD f Keyword)
   , Show (HKD f Operator)
   , Show (HKD f Attribute)
-  , Show (HKD f (String, Text))
+  , Show (HKD f (TextInfo, Text))
   , Show (HKD f Integer)
   , Show (HKD f Double)
   , Show (HKD f NoShow)
@@ -58,20 +58,20 @@ instance
     TokenString                 s -> show s
     TokenInteger                i -> show i
     TokenFloat                  f -> show f
-    TokenInterpolationBegin     x -> show $ hmap @f @() (const $ NoShow "InterpolationBegin")     x
-    TokenInterpolationEnd       x -> show $ hmap @f @() (const $ NoShow "InterpolationEnd")       x
-    TokenInterpolationExprBegin x -> show $ hmap @f @() (const $ NoShow "InterpolationExprBegin") x
-    TokenInterpolationExprEnd   x -> show $ hmap @f @() (const $ NoShow "InterpolationExprEnd")   x
+    TokenInterpolationBegin     x -> show $ hmap @f @TextInfo (const $ NoShow "InterpolationBegin")     x
+    TokenInterpolationEnd       x -> show $ hmap @f @TextInfo (const $ NoShow "InterpolationEnd")       x
+    TokenInterpolationExprBegin x -> show $ hmap @f @TextInfo (const $ NoShow "InterpolationExprBegin") x
+    TokenInterpolationExprEnd   x -> show $ hmap @f @TextInfo (const $ NoShow "InterpolationExprEnd")   x
 
 deriving instance
   ( Eq (HKD f Identifier)
   , Eq (HKD f Keyword)
   , Eq (HKD f Operator)
   , Eq (HKD f Attribute)
-  , Eq (HKD f (String, Text))
+  , Eq (HKD f (TextInfo, Text))
   , Eq (HKD f Integer)
   , Eq (HKD f Double)
-  , Eq (HKD f ())
+  , Eq (HKD f TextInfo)
   ) => Eq (Token f)
 
 instance
@@ -79,10 +79,10 @@ instance
   , HasOffset (HKD f Keyword)
   , HasOffset (HKD f Operator)
   , HasOffset (HKD f Attribute)
-  , HasOffset (HKD f (String, Text))
+  , HasOffset (HKD f (TextInfo, Text))
   , HasOffset (HKD f Integer)
   , HasOffset (HKD f Double)
-  , HasOffset (HKD f ())
+  , HasOffset (HKD f TextInfo)
   ) => HasOffset (Token f) where
   getOffset = \case
     TokenIdentifier             i -> getOffset i
@@ -154,4 +154,17 @@ data Attribute = Attribute
   { attributeName :: Identifier
   , attributeText :: Text
   }
+  deriving (Show, Eq)
+
+data TextInfo = TextInfo
+  { tiType :: TextType
+  , tiHash :: Int
+  }
+  deriving (Show, Eq)
+
+data TextType
+  = SingleLineString
+  | SingleLineBytes
+  | MultiLinesString
+  | MultiLinesBytes
   deriving (Show, Eq)

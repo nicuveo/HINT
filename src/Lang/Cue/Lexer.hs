@@ -193,43 +193,43 @@ simpleStringLiteral :: Int -> Lexer [Token WithOffset]
 simpleStringLiteral hashCount = do
   b <- getOffset
   char '"'
-  let delim = replicate hashCount '#' <> "\""
-  res <- charLiteral delim hashCount False False `manyTill` char '"'
+  let ti = TextInfo SingleLineString hashCount
+  res <- charLiteral ti hashCount False False `manyTill` char '"'
   e <- subtract 1 <$> getOffset
-  pure $ postProcess delim b e res
+  pure $ postProcess ti b e res
 
 multilineStringLiteral :: Int -> Lexer [Token WithOffset]
 multilineStringLiteral hashCount = do
   b <- getOffset
   string "\"\"\"\n"
-  let delim = replicate hashCount '#' <> "\"\"\""
-  res <- charLiteral delim hashCount True False `manyTill` multilineClosing "\"\"\""
+  let ti = TextInfo MultiLinesString hashCount
+  res <- charLiteral ti hashCount True False `manyTill` multilineClosing "\"\"\""
   e <- subtract 3 <$> getOffset
-  pure $ postProcess delim b e res
+  pure $ postProcess ti b e res
 
 simpleBytesLiteral :: Int -> Lexer [Token WithOffset]
 simpleBytesLiteral hashCount = do
   b <- getOffset
   char '\''
-  let delim = replicate hashCount '#' <> "'"
-  res <- charLiteral delim hashCount False True `manyTill` char '\''
+  let ti = TextInfo SingleLineBytes hashCount
+  res <- charLiteral ti hashCount False True `manyTill` char '\''
   e <- subtract 1 <$> getOffset
-  pure $ postProcess delim b e res
+  pure $ postProcess ti b e res
 
 multilineBytesLiteral :: Int -> Lexer [Token WithOffset]
 multilineBytesLiteral hashCount = do
   b <- getOffset
   string "'''\n"
-  let delim = replicate hashCount '#' <> "'''"
-  res <- charLiteral delim hashCount True True `manyTill` multilineClosing "'''"
+  let ti = TextInfo MultiLinesBytes hashCount
+  res <- charLiteral ti hashCount True True `manyTill` multilineClosing "'''"
   e <- subtract 3 <$> getOffset
-  pure $ postProcess delim b e res
+  pure $ postProcess ti b e res
 
-charLiteral :: String -> Int -> Bool -> Bool -> Lexer [Token WithOffset]
-charLiteral delimiter hashCount allowNewline isSingleQuotes = do
+charLiteral :: TextInfo -> Int -> Bool -> Bool -> Lexer [Token WithOffset]
+charLiteral ti hashCount allowNewline isSingleQuotes = do
   o <- getOffset
   c <- anySingle
-  let mkT = TokenString . withOffset o . (delimiter,)
+  let mkT = TokenString . withOffset o . (ti,)
   if | c == '\n' && not allowNewline -> fail "unterminated in single-line literal"
      | c == '\\' -> optional (count hashCount $ char '#') >>= \case
          Nothing -> do
@@ -270,12 +270,13 @@ charLiteral delimiter hashCount allowNewline isSingleQuotes = do
                value <- count 2 hexDigitChar <|> fail "expecting 2 hexadecimal digits after \\x"
                pure [mkT $ T.singleton $ chr $ foldl' (\acc d -> 16*acc + digitToInt d) 0 value]
              '(' -> do
-               -- TODO: what about newlines?
+               -- TODO: we allow newlines in interpolations, unlike the
+               -- playground; is that a problem?
                skipToNextToken True
                ib <- getOffset
                tks <- init <$> interpolationTokens [OperatorParensClose]
                eb <- subtract 1 <$> getOffset
-               pure $ [TokenInterpolationExprBegin $ withOffset ib ()] <> tks <> [TokenInterpolationExprEnd $ withOffset eb ()]
+               pure $ [TokenInterpolationExprBegin $ withOffset ib ti] <> tks <> [TokenInterpolationExprEnd $ withOffset eb ti]
              oct -> do
                unless isSingleQuotes $
                  fail "unexpected octal value in string literal"
@@ -411,11 +412,11 @@ multilineClosing s = try $ void $ char '\n' >> hspace >> string s
 -- | Fuses the individual elements of a string literal. If there are no
 -- interpolations in the literal, it fuses all elements in one string token,
 -- and returns a heterogeneous list otherwise.
-postProcess :: String -> Offset -> Offset -> [[Token WithOffset]] -> [Token WithOffset]
-postProcess d b e l = case foldr fuse [] l of
-  [] -> [TokenString $ withOffset b (d, "")]
+postProcess :: TextInfo -> Offset -> Offset -> [[Token WithOffset]] -> [Token WithOffset]
+postProcess i b e l = case foldr fuse [] l of
+  [] -> [TokenString $ withOffset b (i, "")]
   r@[TokenString _]  -> r
-  r -> [TokenInterpolationBegin $ withOffset b ()] <> r <> [TokenInterpolationEnd $ withOffset e ()]
+  r -> [TokenInterpolationBegin $ withOffset b i] <> r <> [TokenInterpolationEnd $ withOffset e i]
   where
     fuse
       [TokenString (WithOffset (o, (x, s1)))]

@@ -133,7 +133,9 @@ fullGrammar = mdo
     pure $ LabelIdentifier lname opt
 
   stringLabel <- inlineRule do
-    lname <- named "label name" simpleStringLiteral
+    lname <- named "label name" (singleLineStringLiteral expression) <&> \case
+      StringLiteral _ lname -> lname
+      _ -> unreachable
     opt   <- optionality
     pure $ LabelString lname opt
 
@@ -275,9 +277,9 @@ fullGrammar = mdo
     basicLiteral <|> fmap ListLiteral listLiteral <|> fmap StructLiteral structLiteral
 
   basicLiteral <- rule "basic literal" $ choice
-    [ IntegerLiteral    <$> integerLiteral
+    [ stringLiteral expression
+    , IntegerLiteral    <$> integerLiteral
     , FloatLiteral      <$> floatLiteral
-    , StringLiteral     <$> stringLiteral expression
     , BoolLiteral True  <$  keyword  KeywordTrue
     , BoolLiteral False <$  keyword  KeywordFalse
     , NullLiteral       <$  keyword  KeywordNull
@@ -410,24 +412,53 @@ attribute = named "attribute" $ terminal \case
 
 simpleStringLiteral :: Parser r Text
 simpleStringLiteral = named "simple string literal" $ terminal \case
-  TokenString (discardLocation -> (d, s)) | d == "\"" -> Just s
+  TokenString (discardLocation -> (TextInfo SingleLineString 0, s)) -> Just s
   _ -> Nothing
 
-stringLiteral :: Parser r Expression -> Parser r StringLiteral
-stringLiteral expr = named "string literal" $ fmap pure rawLiteral <|> interpolation
+stringLiteral :: Parser r Expression -> Parser r Literal
+stringLiteral e = choice
+  [ singleLineStringLiteral e
+  , singleLineBytesLiteral  e
+  , multiLinesStringLiteral e
+  , multiLinesBytesLiteral  e
+  ]
+
+singleLineStringLiteral :: Parser r Expression -> Parser r Literal
+singleLineBytesLiteral  :: Parser r Expression -> Parser r Literal
+multiLinesStringLiteral :: Parser r Expression -> Parser r Literal
+multiLinesBytesLiteral  :: Parser r Expression -> Parser r Literal
+singleLineStringLiteral = textLiteral SingleLineString
+singleLineBytesLiteral  = textLiteral SingleLineBytes
+multiLinesStringLiteral = textLiteral MultiLinesString
+multiLinesBytesLiteral  = textLiteral MultiLinesBytes
+
+textLiteral
+  :: TextType
+  -> Parser r Expression
+  -> Parser r Literal
+textLiteral kind expr =
+  named "string literal" $ oneElement <|> interpolation
   where
-    rawLiteral = named "raw string literal" $ terminal \case
-      TokenString (discardLocation -> (d, s)) -> Just (RawStringLiteral d s)
+    -- top level
+    oneElement = terminal \case
+      TokenString (discardLocation -> (ti, s))
+        | tiType ti == kind -> Just $ StringLiteral ti [RawStringLiteral s]
       _ -> Nothing
-    interpolation = named "interpolation" do
-      terminal \case
-        TokenInterpolationBegin _ -> Just ()
+    interpolation = do
+      ti <- terminal \case
+        TokenInterpolationBegin (discardLocation -> ti)
+          | tiType ti == kind -> Just ti
         _ -> Nothing
       elts <- many $ rawLiteral <|> interpExpr
       terminal \case
         TokenInterpolationBegin _ -> Just ()
         _ -> Nothing
-      pure elts
+      pure $ StringLiteral ti elts
+    -- interpolation elements
+    rawLiteral = terminal \case
+      TokenString (discardLocation -> (ti, s))
+        | tiType ti == kind -> Just $ RawStringLiteral s
+      _ -> Nothing
     interpExpr = named "interpolation expression" do
       terminal \case
         TokenInterpolationExprBegin _ -> Just ()

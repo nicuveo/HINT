@@ -40,7 +40,7 @@ data Label = Label
   } deriving (Show, Eq)
 
 data LabelExpression
-  = LabelString     Text Optional
+  = LabelString     StringLiteral Optional
   | LabelIdentifier Identifier Optional
   | LabelConstraint AliasedExpression
   deriving (Show, Eq)
@@ -124,14 +124,14 @@ data Operand
 type StringLiteral = [StringElement]
 
 data StringElement
-  = RawStringLiteral String Text
+  = RawStringLiteral Text
   | Interpolation Expression
   deriving (Show, Eq)
 
 data Literal
   = IntegerLiteral Integer
   | FloatLiteral Double
-  | StringLiteral StringLiteral
+  | StringLiteral TextInfo StringLiteral
   | BoolLiteral Bool
   | NullLiteral
   | BottomLiteral
