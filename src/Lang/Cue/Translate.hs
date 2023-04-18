@@ -1,8 +1,7 @@
 {-# LANGUAGE RecursiveDo     #-}
 {-# LANGUAGE TemplateHaskell #-}
 
--- | This module contains the functions that translate from the AST into an
--- unevaluated 'Thunk'.
+-- | This module contains all code that translates from the AST into the IR.
 module Lang.Cue.Translate
   ( translateFile
   , translateExpression
@@ -13,6 +12,7 @@ import "this" Prelude
 import Control.Lens           (ix, makeLenses, use, uses, (%=), (%~), (.=))
 import Control.Monad.Extra    (unlessM, whenJust)
 import Control.Monad.Validate
+import Data.Char
 import Data.HashMap.Strict    qualified as M
 import Data.List              qualified as L
 import Data.List.NonEmpty     as NE
@@ -41,7 +41,7 @@ newtype Translation a = Translation
     , MonadValidate Errors
     )
 
-type Packages = HashMap Text Package
+type Packages = HashMap Text Thunk
 
 -- | Not all fields have a valid absolute path; we must keep track of how we
 -- reached a field by storing each individual step. Embeddings do not get a path
@@ -83,10 +83,15 @@ runTranslation pkgs (Translation a) = a
 translateFile
   :: HashMap Text Package
   -> SourceFile
-  -> Either Errors Thunk
-translateFile _pkgs SourceFile {..} = do
-  imported <- undefined -- resolve import statements
-  runTranslation imported $ fmap Block $ translateBlock moduleDeclarations
+  -> Either Errors Package
+translateFile pkgs SourceFile {..} = do
+  imported <- foldM (processImport pkgs) M.empty moduleImports
+  topBlock <- runTranslation imported $ translateBlock moduleDeclarations
+  pure Package
+    { pkgName = maybe "" getIdentifier moduleName
+    , pkgDocument = Block topBlock
+    , pkgAttributes = translateAttributes moduleAttributes
+    }
 
 translateExpression
   :: Expression
@@ -585,3 +590,29 @@ translateAttributes = foldr step mempty
 -- use @null@ instead of the missing thunk.
 recover :: Functor f => f (Maybe Thunk) -> f Thunk
 recover = fmap $ fromMaybe $ Leaf Null
+
+processImport :: HashMap Text Package -> Packages -> Import -> Either Errors Packages
+processImport pkgs m Import {..} = do
+  (packagePath, packageName) <- translateImport importPath
+  let name = maybe packageName getIdentifier importName
+  Package {..} <- M.lookup packagePath pkgs
+    `onNothing` Left (error "package not found") -- FIXME
+  when (name `M.member` m) $
+    -- the playground does not reject this?
+    Left (error "duplicate package name") -- FIXME
+  pure $ M.insert name pkgDocument m
+  where
+    illegal = "!\"#$%&'()*,:;<=>?[]^{|}\xFFFD" :: String
+    invalid c = not (isPrint c) || isSpace c || elem c illegal
+    validate t = when (T.null t || T.any invalid t) $
+      Left (error "invalid import")
+    translateImport t = do
+      let (part1, part2) = T.breakOnEnd ":" t
+      if T.null part1
+      then do
+        validate part2
+        pure (part2, snd $ T.breakOnEnd "/" part2)
+      else do
+        validate part1
+        validate part2
+        pure (part1, part2)

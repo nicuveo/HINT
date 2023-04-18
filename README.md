@@ -69,3 +69,5 @@ a: {
 }
 ```
   - [ ] the playground doesn't reject non-string pattern constraints
+  - [ ] the documented `import "math/bits:bits" syntax doesn't seem to work?
+  - [ ] the playground does not reject having multiple imports with the same alias
