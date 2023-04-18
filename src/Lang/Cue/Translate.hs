@@ -20,9 +20,8 @@ import Data.Sequence          as S
 import Data.Text              qualified as T
 
 import Lang.Cue.AST           as A
-import Lang.Cue.Document      as D
 import Lang.Cue.Error
-import Lang.Cue.Package
+import Lang.Cue.IR            as I
 import Lang.Cue.Tokens
 
 
@@ -87,8 +86,7 @@ translateFile
   -> Either Errors Thunk
 translateFile _pkgs SourceFile {..} = do
   imported <- undefined -- resolve import statements
-  b <- runTranslation imported $ translateBlock moduleDeclarations
-  pure $ Block b { _biCanBeAtom = True }
+  runTranslation imported $ fmap Block $ translateBlock moduleDeclarations
 
 translateExpression
   :: Expression
@@ -188,7 +186,6 @@ translateBlock decls = mdo
         , _biStringFields = S.empty
         , _biEmbeddings   = S.empty
         , _biConstraints  = S.empty
-        , _biCanBeAtom    = False
         }
   -- We rely on 'MonadFix' to deal with all definitions in one traversal. We
   -- need to know about the names of all of the new fields and aliases to be
@@ -282,7 +279,7 @@ translateDeclaration old block = \case
         -- within the definition of that field, but the playground disagrees; we make
         -- the alias visible to the whole block to be consistent
         let
-          field = D.Field
+          field = I.Field
             { fieldAlias      = fAlias
             , fieldValue      = thunk
             , fieldOptional   = opt
@@ -339,7 +336,7 @@ translateDeclaration old block = \case
         -- within the definition of that field, but the playground disagrees; we make
         -- the alias visible to the whole block to be consistent
         let
-          field = D.Field
+          field = I.Field
             { fieldAlias      = fAlias
             , fieldValue      = thunk
             , fieldOptional   = opt
@@ -398,7 +395,7 @@ translateDeclaration old block = \case
 translateComprehension
   :: NonEmpty ComprehensionClause
   -> [Declaration]
-  -> Translation D.Embedding
+  -> Translation I.Embedding
 translateComprehension (clause :| rest) decl =
   fmap (fromMaybe (InlineThunk $ Leaf $ Null) . join) $
     tolerate $ case clause of
@@ -429,31 +426,31 @@ translateComprehension (clause :| rest) decl =
             -- something went wrong, ignore this result
             InlineThunk t -> InlineThunk t
             -- add this clause on the way back
-            D.Comprehension rcs b -> D.Comprehension (NE.cons c rcs) b
+            I.Comprehension rcs b -> I.Comprehension (NE.cons c rcs) b
         Nothing -> do
           b <- translateBlock decl
-          pure $ D.Comprehension (pure c) b
+          pure $ I.Comprehension (pure c) b
       traverse_ popField (L.reverse fs)
       pure result
 
 translateExpr :: Expression -> Translation Thunk
 translateExpr = \case
-  A.Multiplication e1 e2 -> D.Multiplication <$> translateExpr e1 <*> translateExpr e2
-  A.Division       e1 e2 -> D.Division       <$> translateExpr e1 <*> translateExpr e2
-  A.Addition       e1 e2 -> D.Addition       <$> translateExpr e1 <*> translateExpr e2
-  A.Subtraction    e1 e2 -> D.Subtraction    <$> translateExpr e1 <*> translateExpr e2
-  A.Equal          e1 e2 -> D.Equal          <$> translateExpr e1 <*> translateExpr e2
-  A.NotEqual       e1 e2 -> D.NotEqual       <$> translateExpr e1 <*> translateExpr e2
-  A.Match          e1 e2 -> D.Match          <$> translateExpr e1 <*> translateExpr e2
-  A.NotMatch       e1 e2 -> D.NotMatch       <$> translateExpr e1 <*> translateExpr e2
-  A.LessThan       e1 e2 -> D.LessThan       <$> translateExpr e1 <*> translateExpr e2
-  A.LessOrEqual    e1 e2 -> D.LessOrEqual    <$> translateExpr e1 <*> translateExpr e2
-  A.GreaterThan    e1 e2 -> D.GreaterThan    <$> translateExpr e1 <*> translateExpr e2
-  A.GreaterOrEqual e1 e2 -> D.GreaterOrEqual <$> translateExpr e1 <*> translateExpr e2
-  A.LogicalAnd     e1 e2 -> D.LogicalAnd     <$> translateExpr e1 <*> translateExpr e2
-  A.LogicalOr      e1 e2 -> D.LogicalOr      <$> translateExpr e1 <*> translateExpr e2
-  u@A.Unification {}     -> D.Unification    <$> getU u
-  d@A.Disjunction {}     -> D.Disjunction    <$> getD d
+  A.Multiplication e1 e2 -> I.Multiplication <$> translateExpr e1 <*> translateExpr e2
+  A.Division       e1 e2 -> I.Division       <$> translateExpr e1 <*> translateExpr e2
+  A.Addition       e1 e2 -> I.Addition       <$> translateExpr e1 <*> translateExpr e2
+  A.Subtraction    e1 e2 -> I.Subtraction    <$> translateExpr e1 <*> translateExpr e2
+  A.Equal          e1 e2 -> I.Equal          <$> translateExpr e1 <*> translateExpr e2
+  A.NotEqual       e1 e2 -> I.NotEqual       <$> translateExpr e1 <*> translateExpr e2
+  A.Match          e1 e2 -> I.Match          <$> translateExpr e1 <*> translateExpr e2
+  A.NotMatch       e1 e2 -> I.NotMatch       <$> translateExpr e1 <*> translateExpr e2
+  A.LessThan       e1 e2 -> I.LessThan       <$> translateExpr e1 <*> translateExpr e2
+  A.LessOrEqual    e1 e2 -> I.LessOrEqual    <$> translateExpr e1 <*> translateExpr e2
+  A.GreaterThan    e1 e2 -> I.GreaterThan    <$> translateExpr e1 <*> translateExpr e2
+  A.GreaterOrEqual e1 e2 -> I.GreaterOrEqual <$> translateExpr e1 <*> translateExpr e2
+  A.LogicalAnd     e1 e2 -> I.LogicalAnd     <$> translateExpr e1 <*> translateExpr e2
+  A.LogicalOr      e1 e2 -> I.LogicalOr      <$> translateExpr e1 <*> translateExpr e2
+  u@A.Unification {}     -> I.Unification    <$> getU u
+  d@A.Disjunction {}     -> I.Disjunction    <$> getD d
   Unary ue -> snd <$> translateUnaryExpr False ue
   where
     getU = \case
@@ -517,8 +514,8 @@ translateOperand = \case
 translateLiteral :: Literal -> Translation Thunk
 translateLiteral = \case
   -- recur
-  A.ListLiteral   _ -> undefined
-  A.StructLiteral _ -> undefined
+  A.StructLiteral s -> Block <$> translateBlock s
+  A.ListLiteral   l -> translateListLiteral l
   StringLiteral i l -> translateStringLiteral i l
   -- leaves
   IntegerLiteral i  -> pure $ Leaf $ Integer i
@@ -526,6 +523,22 @@ translateLiteral = \case
   BoolLiteral    b  -> pure $ Leaf $ Boolean b
   NullLiteral       -> pure $ Leaf Null
   BottomLiteral     -> pure Bottom
+
+translateListLiteral :: A.ListLiteral -> Translation Thunk
+translateListLiteral = fmap List . \case
+  ClosedList es    -> ListInfo <$> traverse go es <*> pure Nothing
+  OpenList   es el -> ListInfo <$> traverse go es <*> case el of
+    Nothing -> pure $ Just Top
+    Just e  -> Just <$> translateExpr e
+  where
+    go = \case
+      EmbeddedExpression AliasedExpression {..} -> do
+        whenJust aeAlias $ const $
+          refute $ error "alias in embed" -- FIXME
+        thunk <- recover $ tolerate $ translateExpr aeExpression
+        pure $ InlineThunk thunk
+      EmbeddedComprehension A.Comprehension {..} ->
+        translateComprehension compClauses compResult
 
 translateStringLiteral :: TextInfo -> StringLiteral -> Translation Thunk
 translateStringLiteral i l = do
@@ -539,7 +552,7 @@ translateStringLiteral i l = do
   pure $ case r of
     [Leaf (String s)] -> Leaf (String s)
     [Leaf (Bytes  s)] -> Leaf (Bytes  s)
-    elems             -> D.Interpolation i elems
+    elems             -> I.Interpolation i elems
 
 translateReference :: Identifier -> Translation Thunk
 translateReference i = do
@@ -550,12 +563,12 @@ translateReference i = do
 translateIdentifier :: Identifier -> Translation FieldLabel
 translateIdentifier (Identifier i) = do
   t <- case T.unpack $ T.take 2 i of
-    ['_', '_'] -> refute undefined -- FIXME: use of reserved identifier
+    ['_', '_'] -> refute $ error "use of reserved identifier" -- FIXME
     ['_', '#'] -> pure HiddenDefinition
     ('_':_)    -> pure Hidden
     ('#':_)    -> pure Definition
     (_:_)      -> pure Regular
-    _          -> refute undefined -- FIXME: empty identifier
+    _          -> unreachable
   pure $ FieldLabel i t
 
 translateAttributes :: [Attribute] -> Attributes

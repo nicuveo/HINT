@@ -27,10 +27,10 @@ library
       Lang.Cue.Document
       Lang.Cue.Error
       Lang.Cue.HKD
+      Lang.Cue.IR
       Lang.Cue.Lexer
       Lang.Cue.Location
       Lang.Cue.NoShow
-      Lang.Cue.Package
       Lang.Cue.Parser
       Lang.Cue.Printer
       Lang.Cue.Tokens
@@ -103,10 +103,10 @@ executable evalexpr
       Lang.Cue.Document
       Lang.Cue.Error
       Lang.Cue.HKD
+      Lang.Cue.IR
       Lang.Cue.Lexer
       Lang.Cue.Location
       Lang.Cue.NoShow
-      Lang.Cue.Package
       Lang.Cue.Parser
       Lang.Cue.Printer
       Lang.Cue.Tokens
@@ -183,10 +183,10 @@ test-suite tests
       Lang.Cue.Document
       Lang.Cue.Error
       Lang.Cue.HKD
+      Lang.Cue.IR
       Lang.Cue.Lexer
       Lang.Cue.Location
       Lang.Cue.NoShow
-      Lang.Cue.Package
       Lang.Cue.Parser
       Lang.Cue.Printer
       Lang.Cue.Tokens

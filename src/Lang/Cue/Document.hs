@@ -4,10 +4,7 @@ module Lang.Cue.Document where
 
 import "this" Prelude
 
-import Control.Lens
-
-import Lang.Cue.AST    (Optional)
-import Lang.Cue.Tokens
+import Lang.Cue.IR    qualified as I
 
 
 --------------------------------------------------------------------------------
@@ -25,33 +22,18 @@ import Lang.Cue.Tokens
 -- (recoverable) evaluation errors.
 data Document
   -- structure
-  = Atom         Atom
-  | List         (ListInfo Document)
+  = Atom         I.Atom
+  | List         [Document]
   | Struct       StructInfo
   -- constraints
   | NotNull
-  | BoolBound    (Bound Bool    Void    Void)
-  | IntegerBound (Bound Integer Integer Void)
-  | FloatBound   (Bound Float   Float   Void)
-  | StringBound  (Bound Text    Text    Text)
-  | BytesBound   (Bound Text    Text    Void)
+  | BoolBound    BoolBound
+  | IntegerBound IntegerBound
+  | FloatBound   FloatBound
+  | StringBound  StringBound
+  | BytesBound   BytesBound
   -- unevaluated
-  | Thunk        Thunk
-  deriving (Show, Eq)
-
-
---------------------------------------------------------------------------------
--- * Atom
-
--- | Evaluated leaf values. Null is a "unit", both a type and its only possible
--- value; it therefore does not unify with anything.
-data Atom
-  = Boolean Bool
-  | Integer Integer
-  | Float   Double
-  | String  Text
-  | Bytes   Text
-  | Null
+  | Thunk        I.Thunk
   deriving (Show, Eq)
 
 
@@ -82,6 +64,12 @@ data Bound e o r = Bound
   }
   deriving (Show, Eq)
 
+type BoolBound    = Bound Bool    Void    Void
+type IntegerBound = Bound Integer Integer Void
+type FloatBound   = Bound Float   Float   Void
+type StringBound  = Bound Text    Text    Text
+type BytesBound   = Bound Text    Text    Void
+
 -- | Bound for an ordered value.
 data EndPoint o
   = Open
@@ -91,270 +79,14 @@ data EndPoint o
 
 
 --------------------------------------------------------------------------------
--- * Types
-
--- | A type is a special value that represents the set of all possible values of
--- that given type. It unifies with atoms of that type, and can be used as a
--- constraint. It only arises from use of the reserved identifiers.
-data Type
-  = BooleanType
-  | NumberType
-  | IntegerType
-  | FloatType
-  | StringType
-  | BytesType
-  deriving (Show, Eq)
-
-
---------------------------------------------------------------------------------
--- * Function
-
--- | All functions are built-ins, since there isn't any syntax in the language
--- to define custom ones.
-data Function = Function
-  { functionName :: Text
-  , functionBody :: [Document] -> Document
-  }
-
-instance Show Function where
-  show (Function n _) = "Function " ++ show n
-
-instance Eq Function where
-  (==) = (==) `on` functionName
-
-
---------------------------------------------------------------------------------
--- * List
-
--- | List of documents.
---
--- Unlike structs, lists do not allow annotations, but they are however very
--- similar: each field of a list can be reduced in parallel, but all fields must
--- be valid for a list to be valid (bottoms will not be caught).
---
--- A list can still be concrete even with an ellipsis: the ellipsis just gets
--- ignored when reifying.
---
--- The structure of a list being the same for concrete and unresolved values,
--- this type uses the @v@ type parameter to choose what kind of data the list
--- contains.
-data ListInfo v = ListInfo
-  { listElements   :: [v]
-  , listConstraint :: Maybe v
-  } deriving (Show, Eq)
-
-
---------------------------------------------------------------------------------
 -- * Struct
 
 data StructInfo = StructInfo
-  { _siAttributes :: Attributes
-  , _siFields     :: HashMap FieldLabel (Field Document)
+  { structFields     :: HashMap Text Field
+  , structAttributes :: I.Attributes
   } deriving (Show, Eq)
 
-data BlockInfo = BlockInfo
-  { _biAttributes   :: Attributes
-  , _biAliases      :: HashMap FieldLabel (Maybe Thunk)
-  , _biIdentFields  :: HashMap FieldLabel (Seq (Field Thunk))
-  , _biStringFields :: Seq (Thunk, Field Thunk)
-  , _biEmbeddings   :: Seq Embedding
-  , _biConstraints  :: Seq (Thunk, Thunk)
-  , _biCanBeAtom    :: Bool
+data Field = Field
+  { fieldValue      :: Document
+  , fieldAttributes :: I.Attributes
   } deriving (Show, Eq)
-
-data Field v = Field
-  { fieldAlias      :: Maybe FieldLabel
-  , fieldValue      :: v
-  , fieldOptional   :: Optional
-  , fieldAttributes :: Attributes
-  } deriving (Show, Eq)
-
--- | We must include the field type in the label to be able to distinguish
--- between fields @"_a"@ and @_a@, which are considered different despite having
--- the exact same text... the difference isn't actually how the field was
--- referred to, @"a"@ and @a@ are considered the same; it's whether the field is
--- exported / visible or not.
-data FieldLabel = FieldLabel
-  { labelName :: Text
-  , labelType :: FieldType
-  } deriving (Show, Eq, Ord, Generic)
-
-instance Hashable FieldLabel
-
-data FieldType
-  = Regular
-  | Definition
-  | Hidden
-  | HiddenDefinition
-  deriving (Show, Eq, Ord, Enum, Bounded, Generic)
-
-instance Hashable FieldType
-
-
---------------------------------------------------------------------------------
--- * Attributes
-
--- | Arbitrary text associated with parts of the document, meant for consumption
--- by programs, ignored when exporting to non-CUE formats.
---
--- The same attribute name can appear more than one in a given scope, and we
--- collect all of them in the order in which they appear.
-type Attributes = HashMap Text (Seq Text)
-
-
---------------------------------------------------------------------------------
--- * Thunks
-
--- | A thunk is an unevaluated part of a document, to be evaluated at a later
--- point. It is a "resolved" version of the AST's expression, in which we have
--- resolved and checked functions and identifiers.
-data Thunk
-  -- binary operations
-  = Disjunction    Disjunction
-  | Unification    Unification
-  | LogicalOr      Thunk Thunk
-  | LogicalAnd     Thunk Thunk
-  | Equal          Thunk Thunk
-  | NotEqual       Thunk Thunk
-  | Match          Thunk Thunk
-  | NotMatch       Thunk Thunk
-  | LessThan       Thunk Thunk
-  | LessOrEqual    Thunk Thunk
-  | GreaterThan    Thunk Thunk
-  | GreaterOrEqual Thunk Thunk
-  | Addition       Thunk Thunk
-  | Subtraction    Thunk Thunk
-  | Multiplication Thunk Thunk
-  | Division       Thunk Thunk
-
-  -- unary operations
-  | NumId              Thunk
-  | Negate             Thunk
-  | LogicalNot         Thunk
-  | IsNotEqualTo       Thunk
-  | Matches            Thunk
-  | Doesn'tMatch       Thunk
-  | IsLessThan         Thunk
-  | IsLessOrEqualTo    Thunk
-  | IsGreaterThan      Thunk
-  | IsGreaterOrEqualTo Thunk
-
-  -- primary
-  | Select Thunk FieldLabel
-  | Index  Thunk Thunk
-  | Slice  Thunk Thunk Thunk
-  | Call   Thunk [Thunk]
-
-  -- groups
-  | ListLiteral (ListInfo Thunk)
-  | Block       BlockInfo
-
-  -- interpolation
-  | Interpolation TextInfo [Thunk]
-
-  -- leaves
-  | Package   Thunk
-  | Type      Type
-  | Func      Function
-  | Ref       Reference
-  | Alias     Text
-  | Leaf      Atom
-  | Top
-  | Bottom
-
-  deriving (Show, Eq)
-
--- | We group all disjunctions together, since we need to distinguish between:
---
---     a: *1 | (*2 | 3)   // 1
---     b: *1 |  *2 | 3    // 1 | 2
---
--- We store it as a simple sequence of thunks, with a boolean indicating whether
--- the thunk was labelled as being a default value.
-type Disjunction = Seq (Bool, Thunk)
-
--- | We group all unifications together, for convenience.
-type Unification = Seq Thunk
-
--- | To keep track of references, we change every identifier we encounter to be
--- an absolute path instead of a relative path: consider the following example:
---
---     a: {
---       b: number
---       c: {
---         d: b // refers to a.b
---         e: d + 1
---       }
---     }
---     f: a.c & {
---       d: 0
---     }
---
--- if we substitue @a.c@ by its definition in the expression for @f@ and we keep
--- the @b@ reference relative, we do not have a @b@ in scope when evaluating
--- @f@:
---
---     f: {
---       d: b // whoops!
---       e: d + 1
---     } & {
---       d: 0
---     }
---
--- hence keeping an absolute reference to @a.b@ when generating the thunk.
--- However! We *also* need to keep a relative path so that we can do reference
--- substitution. If, in the previous example, we inline the definition of @c@
--- using absolute paths but without altering its inner references, we get:
---
---     f: {
---       d: a.b
---       e: a.c.d + 1 // whoops!
---     } & {
---       d: 0
---     }
---
--- so we keep *both*! When we inline @a.c@ in the definition of @f@, we can keep
--- all "outer" references, and replace all the inner ones, to finally obtain:
---
---     f: {
---       d: a.b     // points back to the "outer" original value
---       e: f.d + 1 // points to the new local field
---     } & {
---       d: 0
---     }
---
--- in practice, we don't need to keep the full relative path; we just need to
--- know how many "steps up" are required before finding a common path between
--- the "referent" and the "referee".
-data Reference = Reference
-  { refPath  :: [FieldLabel]
-  , refSteps :: Int
-  }
-  deriving (Show, Eq)
-
-
---------------------------------------------------------------------------------
--- * Embeddings
-
-data Embedding
-  = Comprehension (NonEmpty Clause) BlockInfo
-  | InlineThunk   Thunk
-  deriving (Show, Eq)
-
-data Clause
-  = For FieldLabel Thunk
-  | IndexedFor FieldLabel FieldLabel Thunk
-  | If Thunk
-  | Let FieldLabel Thunk
-  deriving (Show, Eq)
-
-
---------------------------------------------------------------------------------
--- Lens generation
---
--- We put all TH splices at the end of the file since it avoids the drawback of
--- haivng them closer to the relevant type, namely that it makes declaration
--- order within the file matter (which is unpleasant).
-
-makeLenses ''StructInfo
-makeLenses ''BlockInfo
