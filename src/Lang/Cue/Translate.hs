@@ -143,6 +143,13 @@ popAlias l =
       visibleAliases %= flip M.update l (const $ nonEmpty r)
       pure b
 
+-- | Removes the given alias from the stack and raise a non-fatal error if it
+-- wasn't used.
+popAndCheckAlias :: FieldLabel -> Translation ()
+popAndCheckAlias l =
+  unlessM (popAlias l) $
+    dispute $ error "alias not used!" -- FIXME
+
 -- | Pushes all the definition in a block onto the current scope, runs the given
 -- action, then pops the newly added fields. This function will raise non-fatal
 -- errors if it detects that an alias was popped unused (see 'Scope').
@@ -156,9 +163,7 @@ withScope block action = do
   traverse_ pushField fields
   result <- tolerate action
   traverse_ popField fields
-  for_ aliases \alias ->
-    unlessM (popAlias alias) $
-      dispute $ error "alias not used!" -- FIXME
+  traverse_ popAndCheckAlias aliases
   pure result
 
 
@@ -179,20 +184,25 @@ translateBlock decls = mdo
   -- need to know about the names of all of the new fields and aliases to be
   -- able to update the current scope to translate them recursively, and it's
   -- easier to do this in one traversal rather than two.
+  scope <- get
   block <-
     fmap (fromMaybe startBlock) $
       withScope block $
-        foldM translateDeclaration startBlock decls
+        foldM (translateDeclaration scope) startBlock decls
   pure block
 
-translateDeclaration :: Block -> Declaration -> Translation Block
-translateDeclaration block = \case
+translateDeclaration :: Scope -> Block -> Declaration -> Translation Block
+translateDeclaration old block = \case
   DeclarationAttribute Attribute {..} ->
     pure $
       block & defAttributes %~
         M.insertWith (flip (<>)) (getIdentifier attributeName) (pure attributeText)
   DeclarationLetClause LetClause {..} -> do
     fieldLabel <- translateIdentifier letName
+    -- check for conflicts with the parent scope and with other definitions in
+    -- this block
+    when (fieldLabel `M.member` _visibleFields old) $
+      refute $ error "scope conflict between alias and field" -- FIXME
     when (fieldLabel `M.member` _defFields block) $
       refute $ error "scope conflict between alias and field" -- FIXME
     when (fieldLabel `M.member` _defAliases block) $
@@ -226,7 +236,130 @@ translateDeclaration block = \case
     -- Not supported yet, as per the reference.
     refute $ error "ellipsis in struct" -- FIXME
   DeclarationField A.Field {..} -> do
-    undefined
+    let Label {..} = fieldLabel
+    case labelExpression of
+      LabelString t opt ->
+        translateNamedField
+          old
+          block
+          labelAlias
+          (FieldLabel t Regular)
+          opt
+          fieldExpression
+          fieldAttributes
+      LabelIdentifier i opt -> do
+        l <- translateIdentifier i
+        translateNamedField
+          old
+          block
+          labelAlias
+          l
+          opt
+          fieldExpression
+          fieldAttributes
+      LabelConstraint con -> do
+        -- WARNING: DIVERGENT BEHAVIOUR?
+        -- an alias on a constraint field make no sense and can't be used in any
+        -- meaningful way, so they are just entirely ignored for now
+        let
+          AliasedExpression consAlias consExpr = con
+          AliasedExpression exprAlias exprExpr = fieldExpression
+
+        -- check for conflicts from the conditions's alias (if any)
+        cAlias <- for consAlias \a -> do
+          l <- translateIdentifier a
+          when (l `M.member` _visibleFields old) $
+            refute $ error "scope conflict between alias and field" -- FIXME
+          when (l `M.member` _defFields block) $
+            refute $ error "scope conflict between alias and field" -- FIXME
+          when (l `M.member` _defAliases block) $
+            refute $ error "alias defined more than once" -- FIXME
+          pure l
+        -- check for conflicts from the expression's alias (if any)
+        eAlias <- for exprAlias \a -> do
+          l <- translateIdentifier a
+          when (l `M.member` _visibleFields old) $
+            refute $ error "scope conflict between alias and field" -- FIXME
+          when (l `M.member` _defFields block) $
+            refute $ error "scope conflict between alias and field" -- FIXME
+          when (l `M.member` _defAliases block) $
+            refute $ error "alias defined more than once" -- FIXME
+          pure l
+        -- evaluate the condition
+        condThunk <- recover $ tolerate $ translateExpr consExpr
+        -- evaluate the expression
+        exprThunk <- recover do
+          whenJust cAlias pushAlias
+          whenJust eAlias pushAlias
+          result  <- tolerate $ translateExpr exprExpr
+          whenJust eAlias popAndCheckAlias
+          whenJust cAlias popAndCheckAlias
+          pure result
+        -- TODO: this isn't enough representation, it's missing attributes and
+        -- aliases
+        pure $ block & defConstraints %~ (:|> (condThunk, exprThunk))
+
+-- | Translates a field with a given name, regardless of how that name was
+-- express (string vs identifier).
+translateNamedField
+  :: Scope
+  -> Block
+  -> Maybe Identifier
+  -> FieldLabel
+  -> Optional
+  -> AliasedExpression
+  -> [Attribute]
+  -> Translation Block
+translateNamedField old block alias fieldName optional AliasedExpression {..} attributes = do
+  -- check for conflicts from the field's name
+  when (fieldName `M.member` _visibleAliases old) $
+    refute $ error "scope conflict between alias and field" -- FIXME
+  when (fieldName `M.member` _defAliases block) $
+    refute $ error "scope conflict between alias and field" -- FIXME
+  -- check for conflicts from the field's alias (if any)
+  fAlias <- for alias \a -> do
+    l <- translateIdentifier a
+    when (l == fieldName) $
+      refute $ error "scope conflict between alias and field" -- FIXME
+    when (l `M.member` _visibleFields old) $
+      refute $ error "scope conflict between alias and field" -- FIXME
+    when (l `M.member` _defFields block) $
+      refute $ error "scope conflict between alias and field" -- FIXME
+    when (l `M.member` _defAliases block) $
+      refute $ error "alias defined more than once" -- FIXME
+    pure l
+  -- check for conflicts from the expression's alias (if any)
+  eAlias <- for aeAlias \a -> do
+    l <- translateIdentifier a
+    when (l == fieldName) $
+      refute $ error "scope conflict between alias and field" -- FIXME
+    when (l `M.member` _visibleFields old) $
+      refute $ error "scope conflict between alias and field" -- FIXME
+    when (l `M.member` _defFields block) $
+      refute $ error "scope conflict between alias and field" -- FIXME
+    when (l `M.member` _defAliases block) $
+      refute $ error "alias defined more than once" -- FIXME
+    pure l
+  -- finally evaluate the expression
+  thunk <- recover $ fmap join $ withPath fieldName do
+    whenJust eAlias pushAlias
+    result  <- tolerate $ translateExpr aeExpression
+    whenJust eAlias popAndCheckAlias
+    pure result
+  -- WARNING: BUG?
+  -- the reference claims that the alias to an optional field is only visible
+  -- within the definition of that field, but the playground disagrees; we make
+  -- the alias visible to the whole block to be consistent
+  let
+    field = D.Field
+      { fieldAlias      = getIdentifier <$> alias
+      , fieldValue      = thunk
+      , fieldOptional   = optional == Optional
+      , fieldAttributes = translateAttributes attributes
+      }
+    addField = defFields %~ M.insertWith (flip (<>)) fieldName (pure field)
+    addAlias = maybe id (\a -> defAliases %~ M.insert a (Left fieldName)) fAlias
+  pure $ block & addField & addAlias
 
 -- | Recursively translates a comprehension clause.
 --
@@ -274,6 +407,8 @@ translateComprehension (clause :| rest) decl =
       traverse_ popField (L.reverse fs)
       pure result
 
+translateExpr :: Expression -> Translation Thunk
+translateExpr = undefined
 
 translateIdentifier :: Identifier -> Translation FieldLabel
 translateIdentifier (Identifier i) = do
@@ -286,8 +421,11 @@ translateIdentifier (Identifier i) = do
     _          -> refute undefined -- FIXME: empty identifier
   pure $ FieldLabel i t
 
-translateExpr :: Expression -> Translation Thunk
-translateExpr = undefined
+translateAttributes :: [Attribute] -> Attributes
+translateAttributes = foldr step mempty
+  where
+    step Attribute {..} =
+      M.insertWith (<>) (getIdentifier attributeName) (pure attributeText)
 
 
 --------------------------------------------------------------------------------

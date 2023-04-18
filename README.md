@@ -36,3 +36,37 @@ Questions to ask to the CUE community:
   - [ ] why can't let clause recursively refer to themselves?
   - [ ] the reference claims that an embed can be an aliased expression, but the playground rejects it?
   - [ ] the playground treats identifiers in comprehensions as fields, not aliases? is it because they don't need to be used?
+  - [ ] the reference claims that aliases to optional fields are only visible within the field, but the playground disagrees
+
+Bugs?
+  - [ ] aliases get replicated wrong in the output:
+```cue
+// in
+a: {
+  x = b: number
+  d: {
+    b: 1
+    c: x & a.z
+  }
+}
+
+// out
+a: {
+  b: number
+  d: {
+    b: 1
+    c: b & a.z // wrong b
+  }
+}
+```
+  - [ ] alias to a constraint does weird stuff ("X"?!):
+```cue
+// in
+r = [!=null]: {a: r}
+a: {}
+
+// out
+a: {
+  a: X
+}
+```

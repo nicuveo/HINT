@@ -159,7 +159,7 @@ data Definitions v e = Definitions
   { _defAttributes  :: Attributes
   , _defAliases     :: HashMap FieldLabel (Either FieldLabel v)
   , _defEmbeddings  :: Seq e
-  , _defFields      :: HashMap FieldLabel (Field v)
+  , _defFields      :: HashMap FieldLabel (Seq (Field v))
   , _defConstraints :: Seq (v, v)
   , _defCanBeAtom   :: Bool
   } deriving (Show, Eq)
@@ -170,6 +170,7 @@ type Block  = Definitions Thunk    Embedding
 data Field v = Field
   { fieldAlias      :: Maybe Text
   , fieldValue      :: v
+  , fieldOptional   :: Bool
   , fieldAttributes :: Attributes
   } deriving (Show, Eq)
 

@@ -29,7 +29,7 @@ data Declaration
   deriving (Show, Eq)
 
 data Field = Field
-  { fieldLabels     :: Label
+  { fieldLabel      :: Label
   , fieldExpression :: AliasedExpression
   , fieldAttributes :: [Attribute]
   } deriving (Show, Eq)
