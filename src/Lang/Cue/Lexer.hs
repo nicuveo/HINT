@@ -275,8 +275,10 @@ charLiteral ti hashCount allowNewline isSingleQuotes = do
                -- playground; is that a problem?
                skipToNextToken True
                ib <- getOffset
-               tks <- init <$> interpolationTokens [OperatorParensClose]
-               eb <- subtract 1 <$> getOffset
+               beforeToken <- getParserState
+               tks <- init <$> interpolationTokens beforeToken [OperatorParensClose]
+               ")"
+               eb <- getOffset
                pure $ [TokenInterpolationExprBegin $ withOffset ib ti] <> tks <> [TokenInterpolationExprEnd $ withOffset eb ti]
              oct -> do
                unless isSingleQuotes $
@@ -287,18 +289,23 @@ charLiteral ti hashCount allowNewline isSingleQuotes = do
   where
     -- similarly to attrTokens, this expects a balanced set of tokens
     -- but, unlike attributes, it doesn't reject interpolations
-    interpolationTokens closing = case closing of
-      []         -> pure []
+    interpolationTokens previousState closing = case closing of
+      [] -> do
+        -- we restore the state to what it wad before consuming the final
+        -- closing paren, so that we don't consume spaces after it
+        setParserState previousState
+        pure []
       (cur:rest) -> do
+        beforeToken <- getParserState
         toks@(t:_) <- token
         following <- case t of
           TokenOperator (WithOffset (_, op))
-            | op == cur                  -> interpolationTokens rest
-            | op == OperatorParensOpen   -> interpolationTokens (OperatorParensClose   : closing)
-            | op == OperatorBracesOpen   -> interpolationTokens (OperatorBracesClose   : closing)
-            | op == OperatorBracketsOpen -> interpolationTokens (OperatorBracketsClose : closing)
+            | op == cur                  -> interpolationTokens beforeToken rest
+            | op == OperatorParensOpen   -> interpolationTokens beforeToken (OperatorParensClose   : closing)
+            | op == OperatorBracesOpen   -> interpolationTokens beforeToken (OperatorBracesClose   : closing)
+            | op == OperatorBracketsOpen -> interpolationTokens beforeToken (OperatorBracketsClose : closing)
             | op == OperatorEOFComma     -> fail "found EOF while parsing attribute tokens"
-          _                              -> interpolationTokens closing
+          _                              -> interpolationTokens beforeToken closing
         pure $ toks <> following
 
 -- | Parses a number token, and skips subsequent space.
