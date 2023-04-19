@@ -4,7 +4,7 @@ module Lang.Cue.IR where
 
 import                "this" Prelude
 
-import                Control.Lens
+import                Control.Lens      hiding (List)
 
 import                Lang.Cue.AST      qualified as A
 import {-# SOURCE #-} Lang.Cue.Document qualified as D
@@ -297,10 +297,93 @@ type Attributes = HashMap Text (Seq Text)
 
 
 --------------------------------------------------------------------------------
--- Lens generation
+-- * Lens generation
 --
 -- We put all TH splices at the end of the file since it avoids the drawback of
 -- haivng them closer to the relevant type, namely that it makes declaration
 -- order within the file matter (which is unpleasant).
 
 makeLenses ''BlockInfo
+makePrisms ''Thunk
+
+instance Plated Thunk where
+  plate f = \case
+    Disjunction        d -> Disjunction        <$> (traverse . _2) f d
+    Unification        u -> Unification        <$> traverse f u
+    LogicalOr      t1 t2 -> LogicalOr          <$> f t1 <*> f t2
+    LogicalAnd     t1 t2 -> LogicalAnd         <$> f t1 <*> f t2
+    Equal          t1 t2 -> Equal              <$> f t1 <*> f t2
+    NotEqual       t1 t2 -> NotEqual           <$> f t1 <*> f t2
+    Match          t1 t2 -> Match              <$> f t1 <*> f t2
+    NotMatch       t1 t2 -> NotMatch           <$> f t1 <*> f t2
+    LessThan       t1 t2 -> LessThan           <$> f t1 <*> f t2
+    LessOrEqual    t1 t2 -> LessOrEqual        <$> f t1 <*> f t2
+    GreaterThan    t1 t2 -> GreaterThan        <$> f t1 <*> f t2
+    GreaterOrEqual t1 t2 -> GreaterOrEqual     <$> f t1 <*> f t2
+    Addition       t1 t2 -> Addition           <$> f t1 <*> f t2
+    Subtraction    t1 t2 -> Subtraction        <$> f t1 <*> f t2
+    Multiplication t1 t2 -> Multiplication     <$> f t1 <*> f t2
+    Division       t1 t2 -> Division           <$> f t1 <*> f t2
+    NumId              t -> NumId              <$> f t
+    Negate             t -> Negate             <$> f t
+    LogicalNot         t -> LogicalNot         <$> f t
+    IsNotEqualTo       t -> IsNotEqualTo       <$> f t
+    Matches            t -> Matches            <$> f t
+    Doesn'tMatch       t -> Doesn'tMatch       <$> f t
+    IsLessThan         t -> IsLessThan         <$> f t
+    IsLessOrEqualTo    t -> IsLessOrEqualTo    <$> f t
+    IsGreaterThan      t -> IsGreaterThan      <$> f t
+    IsGreaterOrEqualTo t -> IsGreaterOrEqualTo <$> f t
+    Select         t   l -> Select             <$> f t <*> pure l
+    Index          t   i -> Index              <$> f t <*> f i
+    Slice          t i j -> Slice              <$> f t <*> f i <*> f j
+    Call           t   a -> Call               <$> f t <*> traverse f a
+    Interpolation    i l -> Interpolation i    <$> traverse f l
+    List               l -> List               <$> thunks f l
+    Block              b -> Block              <$> thunks f b
+    Type               t -> pure $ Type  t
+    Func               z -> pure $ Func  z
+    Ref                r -> pure $ Ref   r
+    Alias              l -> pure $ Alias l
+    Leaf               a -> pure $ Leaf  a
+    Top                  -> pure Top
+    Bottom               -> pure Bottom
+
+class HasThunks a where
+  thunks :: Traversal' a Thunk
+
+instance HasThunks BlockInfo where
+  thunks f BlockInfo {..} = BlockInfo
+    <$> pure _biAttributes
+    <*> traverse                       f _biAliases
+    <*> (traverse . traverse . thunks) f _biIdentFields
+    <*> (traverse . beside id thunks)  f _biStringFields
+    <*> (traverse . thunks)            f _biEmbeddings
+    <*> (traverse . both)              f _biConstraints
+    <*> pure _biClosed
+
+instance HasThunks Field where
+  thunks f Field {..} = Field
+    <$> pure fieldAlias
+    <*> f fieldValue
+    <*> pure fieldOptional
+    <*> pure fieldAttributes
+
+instance HasThunks ListInfo where
+  thunks f ListInfo {..} = ListInfo
+    <$> (traverse . thunks) f listElements
+    <*> traverse f listConstraint
+
+instance HasThunks Embedding where
+  thunks f = \case
+    InlineThunk t -> InlineThunk <$> f t
+    Comprehension c b -> Comprehension
+      <$> (traverse . thunks) f c
+      <*> thunks f b
+
+instance HasThunks Clause where
+  thunks f = \case
+    For x t -> For x <$> f t
+    IndexedFor i x t -> IndexedFor i x <$> f t
+    If t -> If <$> f t
+    Let l t -> Let l <$> f t
