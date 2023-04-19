@@ -7,10 +7,13 @@ import Data.Char
 import Data.Text                qualified as T
 import Data.Text.IO             qualified as T
 import System.Console.Haskeline
+import System.Directory
 import System.Exit
+import System.FilePath
 import Text.Pretty.Simple
 
 import Lang.Cue.Error
+import Lang.Cue.Eval
 import Lang.Cue.HKD
 import Lang.Cue.Lexer
 import Lang.Cue.Location
@@ -19,7 +22,13 @@ import Lang.Cue.Translate
 
 
 main :: IO ()
-main = runInputT defaultSettings $ whileJust_ (getInputLine "cue> ") (liftIO . evalLine)
+main = do
+  dirName <- getAppUserDataDirectory "hint"
+  createDirectoryIfMissing True dirName
+  let history  = dirName </> "evalexpr.hist"
+      settings = defaultSettings { historyFile = Just history }
+  runInputT settings $
+    whileJust_ (getInputLine "cue> ") (liftIO . evalLine)
 
 evalLine :: String -> IO ()
 evalLine (dropWhile isSpace -> l) = case l of
@@ -30,23 +39,27 @@ evalLine (dropWhile isSpace -> l) = case l of
         ast    = parse expression "<interactive>" (T.pack expr)
         ir     = translateExpression =<< ast
     case cmd of
-      "?"   -> usage
-      "q"   -> exitSuccess
-      "tok" -> display $ fmap2 (reify discardLocation) tokens
-      "ast" -> display ast
-      "ir"  -> display ir
-      _     -> usage
+      "?"      -> usage
+      "q"      -> exitSuccess
+      "tok"    -> display $ fmap2 (reify discardLocation) tokens
+      "tokens" -> display $ fmap2 (reify discardLocation) tokens
+      "ast"    -> display ast
+      "ir"     -> display ir
+      "inline" -> display $ inlineAliases =<< ir
+      _        -> usage
   _ -> putStrLn "unavailable"
   where
     display :: Show a => Either Errors a -> IO ()
     display = either renderErrors pPrint
     renderErrors = T.putStr . T.unlines . intersperse "" . map errorMessage . toList
     usage = putStrLn "\
-      \:?     print this help\n\
-      \:q     quit this REPL\n\
-      \:tok   tokenize the given expression \n\
-      \:ast   parse and print the AST of the given expression \n\
-      \:ir    parse, translate, and print the IR of the given expression"
+      \:?        print this help\n\
+      \:q        quit this REPL\n\
+      \:tok      tokenize the given expression\n\
+      \:tokens   tokenize the given expression\n\
+      \:ast      parse and print the AST of the given expression\n\
+      \:ir       parse, translate, and print the IR of the given expression\n\
+      \:inline   same as :ir, but perform alias inlining"
 
 {-
 prettyPrint :: Expression -> IO ()

@@ -99,6 +99,8 @@ executables:
     main: Main.hs
     source-dirs: [src, app]
     dependencies:
+      - directory
+      - filepath
       - haskeline
       - monad-loops
       - pretty-simple

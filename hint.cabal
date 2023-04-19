@@ -165,7 +165,9 @@ executable evalexpr
       Earley
     , base
     , containers
+    , directory
     , extra
+    , filepath
     , hashable
     , haskeline
     , lens
