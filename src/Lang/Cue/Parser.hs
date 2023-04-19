@@ -451,7 +451,7 @@ textLiteral kind expr =
         _ -> Nothing
       elts <- many $ rawLiteral <|> interpExpr
       terminal \case
-        TokenInterpolationBegin _ -> Just ()
+        TokenInterpolationEnd _ -> Just ()
         _ -> Nothing
       pure $ StringLiteral ti elts
     -- interpolation elements
@@ -465,7 +465,7 @@ textLiteral kind expr =
         _ -> Nothing
       e <- Interpolation <$> expr
       terminal \case
-        TokenInterpolationExprBegin _ -> Just ()
+        TokenInterpolationExprEnd _ -> Just ()
         _ -> Nothing
       pure e
 
