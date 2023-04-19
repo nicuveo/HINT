@@ -9,7 +9,7 @@ module Lang.Cue.Translate
 
 import "this" Prelude
 
-import Control.Lens           (ix, makeLenses, use, uses, (%=), (%~), (.=))
+import Control.Lens           hiding (List, (|>))
 import Control.Monad.Extra    (unlessM, whenJust)
 import Control.Monad.Validate
 import Data.Char
@@ -51,14 +51,10 @@ type Packages = HashMap Text Thunk
 data Scope = Scope
   { _currentPath    :: Path
   , _visibleFields  :: HashMap FieldLabel (NonEmpty Path)
-  , -- | we don't perform alias inline during the translation phase, and keep
-    -- aliases in the output; furthermore, aliases can't be referenced from
-    -- outside of the hierarchy in which they are declared, so there's never a
-    -- need to refer to them via absolute path. the only thing we need to keep
-    -- track of is whether they've been used in their scope (it's an error not
-    -- to consume them [add reference link here when they document that
-    -- behaviour])
-    _visibleAliases :: HashMap FieldLabel (NonEmpty Bool)
+  , -- | we keep an additional boolean to keep track of whether an alias has
+    -- been used in its scope; it's an (undocumented) error to have an unused
+    -- alias
+    _visibleAliases :: HashMap FieldLabel (NonEmpty (Path, Bool))
   }
 
 makeLenses ''Scope
@@ -131,12 +127,14 @@ pushAlias = pushAliasWith False
 
 -- | Add the given alias to the current scope, with the given used status.
 pushAliasWith :: Bool -> FieldLabel -> Translation ()
-pushAliasWith b l = visibleAliases %= M.insertWith (<>) l (pure b)
+pushAliasWith b a =  do
+  parentPath <- use currentPath
+  visibleAliases %= M.insertWith (<>) a (pure (parentPath, b))
 
 -- | Mark the given alias as used. This function does NOT check that the alias
 -- exists.
 useAlias :: FieldLabel -> Translation ()
-useAlias l = visibleAliases . ix l . ix 0 .= True
+useAlias l = visibleAliases . ix l . ix 0 . _2 .= True
 
 -- | Removes the given alias from the stack, and returns whether it was used.
 popAlias :: FieldLabel -> Translation Bool
@@ -146,7 +144,7 @@ popAlias l =
     Nothing -> unreachable
     Just (b :| r) -> do
       visibleAliases %= flip M.update l (const $ nonEmpty r)
-      pure b
+      pure $ snd b
 
 -- | Removes the given alias from the stack and raise a non-fatal error if it
 -- wasn't used.
@@ -191,10 +189,10 @@ resolve name = go
 resolveAlias :: Identifier -> Translation (Maybe Thunk)
 resolveAlias name = do
   label <- translateIdentifier name
-  found <- uses visibleAliases (M.member label)
-  if found
-    then useAlias label $> Just (Alias label)
-    else pure Nothing
+  uses visibleAliases (M.lookup label) >>=
+    traverse \(fst . NE.head -> parentPath) -> do
+      useAlias label
+      pure $ Alias parentPath label
 
 resolveField :: Identifier -> Translation (Maybe Thunk)
 resolveField name = do

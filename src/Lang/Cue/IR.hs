@@ -75,7 +75,7 @@ data Thunk
   | Type      Type
   | Func      Function
   | Ref       Reference
-  | Alias     FieldLabel
+  | Alias     Path FieldLabel
   | Leaf      Atom
   | Top
   | Bottom
@@ -316,11 +316,11 @@ instance Plated Thunk where
     Interpolation    i l -> Interpolation i    <$> traverse f l
     List               l -> List               <$> thunks f l
     Block              b -> Block              <$> thunks f b
-    Type               t -> pure $ Type  t
-    Func               z -> pure $ Func  z
-    Ref                r -> pure $ Ref   r
-    Alias              l -> pure $ Alias l
-    Leaf               a -> pure $ Leaf  a
+    Type               t -> pure $ Type    t
+    Func               z -> pure $ Func    z
+    Ref                r -> pure $ Ref     r
+    Alias            p l -> pure $ Alias p l
+    Leaf               a -> pure $ Leaf    a
     Top                  -> pure Top
     Bottom               -> pure Bottom
 
