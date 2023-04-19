@@ -216,7 +216,7 @@ resolveBuiltin = getIdentifier >>> pure. \case
   "bytes"   -> Just $ Type BytesType
 
   -- functions
-  "len"   -> Just $ Func undefined
+  "len"   -> Just $ Func F.len
   "close" -> Just $ Func undefined
   "and"   -> Just $ Func undefined
   "or"    -> Just $ Func undefined
