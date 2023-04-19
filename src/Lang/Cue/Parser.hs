@@ -32,7 +32,7 @@ parse
   :: (forall r. Grammar r a)
   -> String
   -> Text
-  -> Either [Error] a
+  -> Either Errors a
 parse grammar filename code = do
   tokens <- tokenize filename code
   case E.fullParses (E.parser grammar) tokens of

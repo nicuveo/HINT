@@ -5,6 +5,7 @@ module Lang.Cue.Lexer (tokenize) where
 import "this" Prelude             hiding (exponent)
 
 import Data.Char
+import Data.Sequence              qualified as S
 import Data.Set                   ()
 import Data.Text                  qualified as T
 import Text.Megaparsec            hiding (Token, token, tokens)
@@ -23,7 +24,7 @@ import Lang.Cue.Tokens
 tokenize
   :: String
   -> Text
-  -> Either [Error] [Token WithLocation]
+  -> Either Errors [Token WithLocation]
 tokenize filename code =
   bimap (foldMap report . bundleErrors) (map annotate) $
     parse tokens filename code
@@ -44,9 +45,9 @@ tokenize filename code =
     annotate :: Token WithOffset -> Token WithLocation
     annotate = ffmap \(WithOffset (o, a)) -> mkLocation o a
 
-    report :: ParseError Text e -> [WithLocation ErrorInfo]
+    report :: ParseError Text e -> Errors
     report = \case
-      FancyError o errs -> do
+      FancyError o errs -> S.fromList do
         err <- toList errs
         pure $
           mkLocation o $
