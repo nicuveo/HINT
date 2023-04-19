@@ -46,21 +46,21 @@ eval = runEval . evalExpression
 --     }
 --
 -- Internally, the @b@ reference in @#a.c@ is represented as an absolute path
--- @[#a, b]@. When substituting @#a@ in @f@, however, we must alter that path to
--- point to @f.b@; if we don't, we get something equivalent to:
+-- @#a->b@. When substituting @#a@ in @f@, however, we must alter that path to
+-- point to @f->b@; if we don't, we get something equivalent to:
 --
 --     f: {
 --       b: 0
---       c: #a.b + 1 // whoops!
+--       c: #a->b + 1 // whoops!
 --     }
 --
 -- What we must do when inlining @#a@ is alter all of its inner references (any
 -- reference that has an absolute path that starts with @#a@) to make it point
--- to the new path instead. What we want in the end is for @f@ to be:
+-- to the new path instead. What we want in the end is for @f@ to be akin to:
 --
 --     f: {
 --       b: 0
---       c: f.b + 1
+--       c: f->b + 1
 --     }
 --
 -- This function traverses the given thunk, and perfom path substitution on all
