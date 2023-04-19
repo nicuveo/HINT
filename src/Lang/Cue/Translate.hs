@@ -43,21 +43,12 @@ newtype Translation a = Translation
 
 type Packages = HashMap Text Thunk
 
--- | Not all fields have a valid absolute path; we must keep track of how we
--- reached a field by storing each individual step. Embeddings do not get a path
--- item since their resulting value will be inlined.
-data PathElem
-  = PathField FieldLabel
-  | PathLetClause FieldLabel
-  | PathStringField
-  | PathConstraint
-
 -- | Stores the current scope during the translation phase. For each kind of
 -- bindings and for each name, we store a stack: on the way back up, we can pop
 -- the values we added and restore the previous context.
 data Scope = Scope
-  { _currentPath    :: Seq PathElem
-  , _visibleFields  :: HashMap FieldLabel (NonEmpty (Seq PathElem))
+  { _currentPath    :: Path
+  , _visibleFields  :: HashMap FieldLabel (NonEmpty Path)
   , -- | we don't perform alias inline during the translation phase, and keep
     -- aliases in the output; furthermore, aliases can't be referenced from
     -- outside of the hierarchy in which they are declared, so there's never a
@@ -180,6 +171,65 @@ withScope block action = do
 
 
 --------------------------------------------------------------------------------
+-- * Reference resolving
+
+resolve :: Identifier -> Translation Thunk
+resolve name = go
+  [ resolveAlias
+  , resolveField
+  , resolvePackage
+  , resolveBuiltin
+  ]
+  where
+    go = \case
+      (f:fs) -> f name `onNothingM` go fs
+      []     -> refute (error "name not found")
+
+resolveAlias :: Identifier -> Translation (Maybe Thunk)
+resolveAlias name = do
+  label <- translateIdentifier name
+  found <- uses visibleAliases (M.member label)
+  if found
+    then useAlias label $> Just (Alias label)
+    else pure Nothing
+
+resolveField :: Identifier -> Translation (Maybe Thunk)
+resolveField name = do
+  label    <- translateIdentifier name
+  thisPath <- use currentPath
+  uses visibleFields (M.lookup label) <<&>> Ref . makeReference thisPath . NE.head
+
+resolvePackage :: Identifier -> Translation (Maybe Thunk)
+resolvePackage name =
+  asks (M.lookup (getIdentifier name))
+
+resolveBuiltin :: Identifier -> Translation (Maybe Thunk)
+resolveBuiltin = getIdentifier >>> pure. \case
+  -- types
+  "bool"    -> Just $ Type BooleanType
+  "number"  -> Just $ Type NumberType
+  "integer" -> Just $ Type IntegerType
+  "float"   -> Just $ Type FloatType
+  "string"  -> Just $ Type StringType
+  "bytes"   -> Just $ Type BytesType
+
+  -- functions
+  "len"   -> Just $ Func undefined
+  "close" -> Just $ Func undefined
+  "and"   -> Just $ Func undefined
+  "or"    -> Just $ Func undefined
+  "div"   -> Just $ Func undefined
+  "mod"   -> Just $ Func undefined
+  "quot"  -> Just $ Func undefined
+  "rem"   -> Just $ Func undefined
+
+  -- misc
+  "null" -> Just $ Leaf Null
+  "_"    -> Just $ Top
+  _      -> Nothing
+
+
+--------------------------------------------------------------------------------
 -- * Translation rules
 
 translateBlock :: [Declaration] -> Translation BlockInfo
@@ -294,11 +344,6 @@ translateDeclaration old block = \case
           addAlias = maybe id (\a -> biAliases %~ M.insert a Nothing) fAlias
         pure $ block & addField & addAlias
       LabelIdentifier i opt -> do
-        -- there aren't a lot of rules governing identifiers; most "reserved"
-        -- words such as "number" or "string" can be used for field names. but
-        -- top, "_", isn't.
-        when (getIdentifier i == "_") $
-          refute $ error "cannot use _ as label" -- FIXME
         fieldName <- translateIdentifier i
         let AliasedExpression {..} = fieldExpression
         -- check for conflicts from the field's name
@@ -514,7 +559,7 @@ translateOperand :: Operand -> Translation Thunk
 translateOperand = \case
   OperandExpression e -> translateExpr e
   OperandLiteral l -> translateLiteral l
-  OperandName i -> translateReference i
+  OperandName i -> resolve i
 
 translateLiteral :: Literal -> Translation Thunk
 translateLiteral = \case
@@ -559,17 +604,12 @@ translateStringLiteral i l = do
     [Leaf (Bytes  s)] -> Leaf (Bytes  s)
     elems             -> I.Interpolation i elems
 
-translateReference :: Identifier -> Translation Thunk
-translateReference i = do
-  a <- undefined i
-  useAlias a
-  pure undefined
-
 translateIdentifier :: Identifier -> Translation FieldLabel
 translateIdentifier (Identifier i) = do
   t <- case T.unpack $ T.take 2 i of
     ['_', '_'] -> refute $ error "use of reserved identifier" -- FIXME
     ['_', '#'] -> pure HiddenDefinition
+    ['_']      -> refute $ error "_ cannot be used as label" -- FIXME
     ('_':_)    -> pure Hidden
     ('#':_)    -> pure Definition
     (_:_)      -> pure Regular
@@ -616,3 +656,16 @@ processImport pkgs m Import {..} = do
         validate part1
         validate part2
         pure (part1, part2)
+
+makeReference :: Path -> Path -> Reference
+makeReference callSite referee = Reference referee $ go (referee, callSite)
+  where
+    go = \case
+      (re :<| res, ce :<| ces)
+        -- matching prefix, iterating
+        | re == ce -> go (res, ces)
+        -- found a disparity! we return the length of what's left
+        | otherwise -> S.length ces
+      (Empty, ces) -> S.length ces
+      -- this can only happen when referring to a field from within an embed
+      (_, Empty) -> 0

@@ -75,7 +75,7 @@ data Thunk
   | Type      Type
   | Func      Function
   | Ref       Reference
-  | Alias     Text
+  | Alias     FieldLabel
   | Leaf      Atom
   | Top
   | Bottom
@@ -183,6 +183,18 @@ data Type
 --------------------------------------------------------------------------------
 -- * Reference
 
+type Path = Seq PathElem
+
+-- | Not all fields have a valid absolute path; we must keep track of how we
+-- reached a field by storing each individual step. Embeddings do not get a path
+-- item since their resulting value will be inlined.
+data PathElem
+  = PathField FieldLabel
+  | PathLetClause FieldLabel
+  | PathStringField
+  | PathConstraint
+  deriving (Show, Eq)
+
 -- | To keep track of references, we change every identifier we encounter to be
 -- an absolute path instead of a relative path: consider the following example:
 --
@@ -234,7 +246,7 @@ data Type
 -- know how many "steps up" are required before finding a common path between
 -- the "referent" and the "referee".
 data Reference = Reference
-  { refPath  :: [FieldLabel]
+  { refPath  :: Path
   , refSteps :: Int
   }
   deriving (Show, Eq)
