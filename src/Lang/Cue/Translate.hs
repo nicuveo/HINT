@@ -234,8 +234,10 @@ resolveBuiltin = getIdentifier >>> pure. \case
 
 translateBlock :: [Declaration] -> Translation BlockInfo
 translateBlock decls = do
+  scope <- get
   let startBlock = BlockInfo
-        { _biAttributes   = M.empty
+        { _biAbsolutePath = _currentPath scope
+        , _biAttributes   = M.empty
         , _biAliases      = M.empty
         , _biIdentFields  = M.empty
         , _biStringFields = Seq.empty
@@ -243,7 +245,6 @@ translateBlock decls = do
         , _biConstraints  = Seq.empty
         , _biClosed       = False
         }
-  scope <- get
   -- we traverse all the declarations; doing so, we collect all the fields and
   -- aliases to add to the current scope, and the monadic actions to run in the
   -- update scope
@@ -368,7 +369,7 @@ translateDeclaration scope (fields, aliases, builder) = \case
               pure result
             let
               field = I.Field
-                { fieldAlias      = fAlias
+                { fieldAlias      = eAlias
                 , fieldValue      = thunk
                 , fieldOptional   = opt
                 , fieldAttributes = translateAttributes fieldAttributes
@@ -431,7 +432,7 @@ translateDeclaration scope (fields, aliases, builder) = \case
               pure result
             let
               field = I.Field
-                { fieldAlias      = fAlias
+                { fieldAlias      = eAlias
                 , fieldValue      = thunk
                 , fieldOptional   = opt
                 , fieldAttributes = translateAttributes fieldAttributes

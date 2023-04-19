@@ -103,7 +103,8 @@ type Unification = Seq Thunk
 -- * Block
 
 data BlockInfo = BlockInfo
-  { _biAttributes   :: Attributes
+  { _biAbsolutePath :: Path
+  , _biAttributes   :: Attributes
   , _biAliases      :: HashMap FieldLabel Thunk
   , _biIdentFields  :: HashMap FieldLabel (Seq Field)
   , _biStringFields :: Seq (Thunk, Field)
@@ -194,7 +195,9 @@ data PathElem
   | PathLetClause FieldLabel
   | PathStringField
   | PathConstraint
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
+
+instance Hashable PathElem
 
 -- | To keep track of references, we change every identifier we encounter to be
 -- an absolute path instead of a relative path: consider the following example:
@@ -327,14 +330,36 @@ instance Plated Thunk where
 class HasThunks a where
   thunks :: Traversal' a Thunk
 
+instance HasThunks Thunk where
+  thunks = id
+
+instance HasThunks a => HasThunks [a] where
+  thunks = traverse . thunks
+
+instance HasThunks a => HasThunks (Seq a) where
+  thunks = traverse . thunks
+
+instance HasThunks a => HasThunks (Maybe a) where
+  thunks = traverse . thunks
+
+instance HasThunks a => HasThunks (NonEmpty a) where
+  thunks = traverse . thunks
+
+instance HasThunks a => HasThunks (HashMap k a) where
+  thunks = traverse . thunks
+
+instance (HasThunks a, HasThunks b) => HasThunks (a, b) where
+  thunks = beside thunks thunks
+
 instance HasThunks BlockInfo where
   thunks f BlockInfo {..} = BlockInfo
-    <$> pure _biAttributes
-    <*> traverse                       f _biAliases
-    <*> (traverse . traverse . thunks) f _biIdentFields
-    <*> (traverse . beside id thunks)  f _biStringFields
-    <*> (traverse . thunks)            f _biEmbeddings
-    <*> (traverse . both)              f _biConstraints
+    <$> pure _biAbsolutePath
+    <*> pure _biAttributes
+    <*> thunks f _biAliases
+    <*> thunks f _biIdentFields
+    <*> thunks f _biStringFields
+    <*> thunks f _biEmbeddings
+    <*> thunks f _biConstraints
     <*> pure _biClosed
 
 instance HasThunks Field where
@@ -346,19 +371,20 @@ instance HasThunks Field where
 
 instance HasThunks ListInfo where
   thunks f ListInfo {..} = ListInfo
-    <$> (traverse . thunks) f listElements
-    <*> traverse f listConstraint
+    <$> thunks f listElements
+    <*> thunks f listConstraint
 
 instance HasThunks Embedding where
   thunks f = \case
-    InlineThunk t -> InlineThunk <$> f t
+    InlineThunk t -> InlineThunk
+      <$> f t
     Comprehension c b -> Comprehension
-      <$> (traverse . thunks) f c
+      <$> thunks f c
       <*> thunks f b
 
 instance HasThunks Clause where
   thunks f = \case
-    For x t -> For x <$> f t
+    For          x t -> For          x <$> f t
     IndexedFor i x t -> IndexedFor i x <$> f t
-    If t -> If <$> f t
-    Let l t -> Let l <$> f t
+    If             t -> If             <$> f t
+    Let          l t -> Let          l <$> f t
