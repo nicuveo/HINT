@@ -101,6 +101,7 @@ executables:
     dependencies:
       - haskeline
       - monad-loops
+      - pretty-simple
 
 tests:
   tests:

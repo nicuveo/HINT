@@ -170,6 +170,7 @@ executable evalexpr
     , monad-validate
     , mtl
     , parser-combinators
+    , pretty-simple
     , text
     , transformers
     , unordered-containers

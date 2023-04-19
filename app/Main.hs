@@ -3,51 +3,50 @@ module Main where
 import "this" Prelude
 
 import Control.Monad.Loops
-import Control.Monad.Trans      (lift)
 import Data.Char
 import Data.Text                qualified as T
 import Data.Text.IO             qualified as T
 import System.Console.Haskeline
 import System.Exit
+import Text.Pretty.Simple
 
 import Lang.Cue.Error
-import Lang.Cue.Eval
 import Lang.Cue.HKD
 import Lang.Cue.Lexer
 import Lang.Cue.Location
 import Lang.Cue.Parser
+import Lang.Cue.Translate
 
 
 main :: IO ()
-main = runInputT defaultSettings $ whileJust_ readPrompt (lift . evalLine)
-
-readPrompt :: InputT IO (Maybe String)
-readPrompt = do
-  line <- getInputLine "cue> "
-  pure $ line >>= \l ->
-    if | l == ":q" -> Nothing
-       | otherwise -> Just l
+main = runInputT defaultSettings $ whileJust_ (getInputLine "cue> ") (liftIO . evalLine)
 
 evalLine :: String -> IO ()
 evalLine (dropWhile isSpace -> l) = case l of
   [] -> pure ()
   (':' : c) -> do
     let (cmd, dropWhile isSpace -> expr) = break isSpace c
+        tokens =         tokenize "<interactive>" (T.pack expr)
+        ast    = parse expression "<interactive>" (T.pack expr)
+        ir     = translateExpression =<< ast
     case cmd of
       "?"   -> usage
       "q"   -> exitSuccess
-      "tok" -> display $ fmap (map $ reify discardLocation) $ tokenize "<interactive>" $ T.pack expr
-      "ast" -> display $ parse expression "<interactive>" $ T.pack expr
+      "tok" -> display $ fmap2 (reify discardLocation) tokens
+      "ast" -> display ast
+      "ir"  -> display ir
       _     -> usage
-  _ -> display $ fmap eval $ parse expression "<interactive>" $ T.pack l
+  _ -> putStrLn "unavailable"
   where
-    display :: Show a => Either [Error] a -> IO ()
-    display = either (T.putStr . T.unlines . intersperse "" . map errorMessage) print
+    display :: Show a => Either Errors a -> IO ()
+    display = either renderErrors pPrint
+    renderErrors = T.putStr . T.unlines . intersperse "" . map errorMessage . toList
     usage = putStrLn "\
       \:?     print this help\n\
       \:q     quit this REPL\n\
       \:tok   tokenize the given expression \n\
-      \:ast   parse and print the AST of the given expression"
+      \:ast   parse and print the AST of the given expression \n\
+      \:ir    parse, translate, and print the IR of the given expression"
 
 {-
 prettyPrint :: Expression -> IO ()
