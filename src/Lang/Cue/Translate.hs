@@ -21,6 +21,7 @@ import Data.Sequence          as Seq
 import Data.Text              qualified as T
 
 import Lang.Cue.AST           as A
+import Lang.Cue.Builtins      qualified as F
 import Lang.Cue.Error
 import Lang.Cue.IR            as I
 import Lang.Cue.Tokens
@@ -197,9 +198,8 @@ resolveAlias name = do
 
 resolveField :: Identifier -> Translation (Maybe Thunk)
 resolveField name = do
-  label    <- translateIdentifier name
-  thisPath <- use currentPath
-  uses visibleFields (M.lookup label) <<&>> Ref . makeReference thisPath . NE.head
+  label <- translateIdentifier name
+  uses visibleFields (M.lookup label) <<&>> Ref . NE.head
 
 resolvePackage :: Identifier -> Translation (Maybe Thunk)
 resolvePackage name =
@@ -243,6 +243,7 @@ translateBlock decls = do
         , _biStringFields = Seq.empty
         , _biEmbeddings   = Seq.empty
         , _biConstraints  = Seq.empty
+        , _biClosed       = False
         }
   scope <- get
   -- we traverse all the declarations; doing so, we collect all the fields and
@@ -297,7 +298,7 @@ translateDeclaration scope (fields, aliases, builder) = \case
           pure result
         pure $
           block & biAliases %~
-            M.insert fieldLabel (Just thunk)
+            M.insert fieldLabel thunk
     pure (fields, newAliases, newBuilder)
 
   -- Embedding
@@ -355,6 +356,10 @@ translateDeclaration scope (fields, aliases, builder) = \case
           pure l
         -- finally evaluate the expression
         let
+          -- WARNING: BUG?
+          -- the reference claims that the alias to an optional field is only visible
+          -- within the definition of that field, but the playground disagrees; we make
+          -- the alias visible to the whole block to be consistent
           newAliases = maybe aliases (`S.insert` aliases) fAlias
           newBuilder = do
             block <- builder
@@ -363,10 +368,6 @@ translateDeclaration scope (fields, aliases, builder) = \case
               result  <- tolerate $ translateExpr aeExpression
               whenJust eAlias popAndCheckAlias
               pure result
-            -- WARNING: BUG?
-            -- the reference claims that the alias to an optional field is only visible
-            -- within the definition of that field, but the playground disagrees; we make
-            -- the alias visible to the whole block to be consistent
             let
               field = I.Field
                 { fieldAlias      = fAlias
@@ -375,7 +376,9 @@ translateDeclaration scope (fields, aliases, builder) = \case
                 , fieldAttributes = translateAttributes fieldAttributes
                 }
               addField = biStringFields %~ (:|> (nameThunk, field))
-              addAlias = maybe id (\a -> biAliases %~ M.insert a Nothing) fAlias
+              -- warning: we treat the alias as if it were an inlined copy of the
+              -- field, instead of making an absolute reference to it
+              addAlias = maybe id (\a -> biAliases %~ M.insert a thunk) fAlias
             pure $ block & addField & addAlias
         pure (fields, newAliases, newBuilder)
 
@@ -414,19 +417,20 @@ translateDeclaration scope (fields, aliases, builder) = \case
           pure l
         -- finally evaluate the expression
         let
+          -- WARNING: BUG?
+          -- the reference claims that the alias to an optional field is only visible
+          -- within the definition of that field, but the playground disagrees; we make
+          -- the alias visible to the whole block to be consistent
           newFields  = S.insert fieldName fields
           newAliases = maybe aliases (`S.insert` aliases) fAlias
           newBuilder = do
             block <- builder
+            cpath <- use currentPath
             thunk <- recover $ fmap join $ withPath (PathField fieldName) do
               whenJust eAlias pushAlias
               result  <- tolerate $ translateExpr aeExpression
               whenJust eAlias popAndCheckAlias
               pure result
-            -- WARNING: BUG?
-            -- the reference claims that the alias to an optional field is only visible
-            -- within the definition of that field, but the playground disagrees; we make
-            -- the alias visible to the whole block to be consistent
             let
               field = I.Field
                 { fieldAlias      = fAlias
@@ -434,8 +438,9 @@ translateDeclaration scope (fields, aliases, builder) = \case
                 , fieldOptional   = opt
                 , fieldAttributes = translateAttributes fieldAttributes
                 }
+              aThunk = Ref $ cpath :|> PathField fieldName
               addField = biIdentFields %~ M.insertWith (flip (<>)) fieldName (pure field)
-              addAlias = maybe id (\a -> biAliases %~ M.insert a Nothing) fAlias
+              addAlias = maybe id (\a -> biAliases %~ M.insert a aThunk) fAlias
             pure $ block & addField & addAlias
         pure (newFields, newAliases, newBuilder)
 
@@ -590,7 +595,12 @@ translatePrimaryExpr = \case
     l <- case s of
       Left  i -> translateIdentifier i
       Right n -> pure $ FieldLabel n Regular
-    pure $ Select t l
+    -- if we detect that the LHS was a reference, we alter the reference to
+    -- point to the inner field, which avoids having to evaluate the entire
+    -- reference
+    pure $ case t of
+      Ref p -> Ref $ p :|> PathField l
+      _     -> Select t l
   PrimaryIndex pe e -> Index
     <$> translatePrimaryExpr pe
     <*> translateExpr e
@@ -705,16 +715,3 @@ processImport pkgs m Import {..} = do
         validate part1
         validate part2
         pure (part1, part2)
-
-makeReference :: Path -> Path -> Reference
-makeReference callSite referee = Reference referee $ go (referee, callSite)
-  where
-    go = \case
-      (re :<| res, ce :<| ces)
-        -- matching prefix, iterating
-        | re == ce -> go (res, ces)
-        -- found a disparity! we return the length of what's left
-        | otherwise -> Seq.length ces + 1
-      (Empty, ces) -> Seq.length ces
-      -- this can only happen when referring to a field from within an embed
-      (_, Empty) -> 0

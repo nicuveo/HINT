@@ -104,11 +104,12 @@ type Unification = Seq Thunk
 
 data BlockInfo = BlockInfo
   { _biAttributes   :: Attributes
-  , _biAliases      :: HashMap FieldLabel (Maybe Thunk)
+  , _biAliases      :: HashMap FieldLabel Thunk
   , _biIdentFields  :: HashMap FieldLabel (Seq Field)
   , _biStringFields :: Seq (Thunk, Field)
   , _biEmbeddings   :: Seq Embedding
   , _biConstraints  :: Seq (Thunk, Thunk)
+  , _biClosed       :: Bool
   } deriving (Show, Eq)
 
 data Field = Field
@@ -221,35 +222,7 @@ data PathElem
 --     }
 --
 -- hence keeping an absolute reference to @a.b@ when generating the thunk.
--- However! We *also* need to keep a relative path so that we can do reference
--- substitution. If, in the previous example, we inline the definition of @c@
--- using absolute paths but without altering its inner references, we get:
---
---     f: {
---       d: a.b
---       e: a.c.d + 1 // whoops!
---     } & {
---       d: 0
---     }
---
--- so we keep *both*! When we inline @a.c@ in the definition of @f@, we can keep
--- all "outer" references, and replace all the inner ones, to finally obtain:
---
---     f: {
---       d: a.b     // points back to the "outer" original value
---       e: f.d + 1 // points to the new local field
---     } & {
---       d: 0
---     }
---
--- in practice, we don't need to keep the full relative path; we just need to
--- know how many "steps up" are required before finding a common path between
--- the "referent" and the "referee".
-data Reference = Reference
-  { refPath  :: Path
-  , refSteps :: Int
-  }
-  deriving (Show, Eq)
+type Reference = Path
 
 
 --------------------------------------------------------------------------------
@@ -272,10 +245,12 @@ data Clause
 -- * Function
 
 -- | All functions are built-ins, since there isn't any syntax in the language
--- to define custom ones.
+-- to define custom ones. Despite operating on 'Document', they are defined at
+-- the IR level, as they are resolved as part of the IR translation and are not
+-- part of the resulting document.
 data Function = Function
   { functionName :: Text
-  , functionBody :: [D.Document] -> D.Document
+  , functionBody :: [D.Document] -> Either () D.Document
   }
 
 instance Show Function where

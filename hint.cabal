@@ -24,8 +24,10 @@ source-repository head
 library
   exposed-modules:
       Lang.Cue.AST
+      Lang.Cue.Builtins
       Lang.Cue.Document
       Lang.Cue.Error
+      Lang.Cue.Eval
       Lang.Cue.HKD
       Lang.Cue.IR
       Lang.Cue.Lexer
@@ -100,8 +102,10 @@ executable evalexpr
   main-is: Main.hs
   other-modules:
       Lang.Cue.AST
+      Lang.Cue.Builtins
       Lang.Cue.Document
       Lang.Cue.Error
+      Lang.Cue.Eval
       Lang.Cue.HKD
       Lang.Cue.IR
       Lang.Cue.Lexer
@@ -181,8 +185,10 @@ test-suite tests
   main-is: Tests.hs
   other-modules:
       Lang.Cue.AST
+      Lang.Cue.Builtins
       Lang.Cue.Document
       Lang.Cue.Error
+      Lang.Cue.Eval
       Lang.Cue.HKD
       Lang.Cue.IR
       Lang.Cue.Lexer
