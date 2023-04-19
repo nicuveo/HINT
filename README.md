@@ -69,5 +69,6 @@ a: {
 }
 ```
   - [ ] the playground doesn't reject non-string pattern constraints
-  - [ ] the documented `import "math/bits:bits" syntax doesn't seem to work?
+  - [ ] the documented `import "math/bits:bits"` syntax doesn't seem to work?
   - [ ] the playground does not reject having multiple imports with the same alias
+  - [ ] the reference claims that `len([1,2,3,...]` is `>= 3`, but the playground resolves it to `3`
