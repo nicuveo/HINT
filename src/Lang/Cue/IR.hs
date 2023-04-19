@@ -75,7 +75,7 @@ data Thunk
   | Type      Type
   | Func      Function
   | Ref       Reference
-  | Alias     Path FieldLabel
+  | Alias     Path Path FieldLabel
   | Leaf      Atom
   | Top
   | Bottom
@@ -105,7 +105,7 @@ type Unification = Seq Thunk
 data BlockInfo = BlockInfo
   { _biAbsolutePath :: Path
   , _biAttributes   :: Attributes
-  , _biAliases      :: HashMap FieldLabel Thunk
+  , _biAliases      :: HashMap FieldLabel (Path, Thunk)
   , _biIdentFields  :: HashMap FieldLabel (Seq Field)
   , _biStringFields :: Seq (Thunk, Field)
   , _biEmbeddings   :: Seq Embedding
@@ -319,11 +319,11 @@ instance Plated Thunk where
     Interpolation    i l -> Interpolation i    <$> traverse f l
     List               l -> List               <$> thunks f l
     Block              b -> Block              <$> thunks f b
-    Type               t -> pure $ Type    t
-    Func               z -> pure $ Func    z
-    Ref                r -> pure $ Ref     r
-    Alias            p l -> pure $ Alias p l
-    Leaf               a -> pure $ Leaf    a
+    Type               t -> pure $ Type  t
+    Func               z -> pure $ Func  z
+    Ref                r -> pure $ Ref   r
+    Alias          l p n -> pure $ Alias l p n
+    Leaf               a -> pure $ Leaf  a
     Top                  -> pure Top
     Bottom               -> pure Bottom
 
@@ -355,7 +355,7 @@ instance HasThunks BlockInfo where
   thunks f BlockInfo {..} = BlockInfo
     <$> pure _biAbsolutePath
     <*> pure _biAttributes
-    <*> thunks f _biAliases
+    <*> (traverse . traverse) f _biAliases
     <*> thunks f _biIdentFields
     <*> thunks f _biStringFields
     <*> thunks f _biEmbeddings

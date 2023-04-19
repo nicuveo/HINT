@@ -121,15 +121,20 @@ pushField f = do
 popField :: FieldLabel -> Translation ()
 popField f = visibleFields %= flip M.update f \(_ :| t) -> nonEmpty t
 
--- | Add the given alias to the current scope, labelled as unused.
-pushAlias :: FieldLabel -> Translation ()
+-- | Add the given alias to the current scope.
+pushAlias :: (FieldLabel, Path) -> Translation ()
 pushAlias = pushAliasWith False
 
--- | Add the given alias to the current scope, with the given used status.
-pushAliasWith :: Bool -> FieldLabel -> Translation ()
-pushAliasWith b a =  do
+-- | Add the given alias to the current scope at current path.
+pushAliasAtCurrentPath :: FieldLabel -> Translation ()
+pushAliasAtCurrentPath l = do
   parentPath <- use currentPath
-  visibleAliases %= M.insertWith (<>) a (pure (parentPath, b))
+  pushAliasWith False (l, parentPath)
+
+-- | Add the given alias to the current scope, with the given used status.
+pushAliasWith :: Bool -> (FieldLabel, Path) -> Translation ()
+pushAliasWith b (l, p) =
+  visibleAliases %= M.insertWith (<>) l (pure (p, b))
 
 -- | Mark the given alias as used. This function does NOT check that the alias
 -- exists.
@@ -137,20 +142,20 @@ useAlias :: FieldLabel -> Translation ()
 useAlias l = visibleAliases . ix l . ix 0 . _2 .= True
 
 -- | Removes the given alias from the stack, and returns whether it was used.
-popAlias :: FieldLabel -> Translation Bool
+popAlias :: FieldLabel -> Translation (Path, Bool)
 popAlias l =
   uses visibleAliases (M.lookup l) >>= \case
     -- if we reach this, it means that we tried to pop a non-existant alias
     Nothing -> unreachable
-    Just (b :| r) -> do
+    Just (v :| r) -> do
       visibleAliases %= flip M.update l (const $ nonEmpty r)
-      pure $ snd b
+      pure v
 
 -- | Removes the given alias from the stack and raise a non-fatal error if it
 -- wasn't used.
 popAndCheckAlias :: FieldLabel -> Translation ()
 popAndCheckAlias l =
-  unlessM (popAlias l) $
+  unlessM (snd <$> popAlias l) $
     dispute $ error "alias not used!" -- FIXME
 
 -- | Pushes all the definition in a block onto the current scope, runs the given
@@ -159,15 +164,15 @@ popAndCheckAlias l =
 -- Like 'withPath', it 'tolerates' errors from the given action, to ensure we
 -- end up with a correct scope.
 withScope
-  :: (HashSet FieldLabel, HashSet FieldLabel)
+  :: (HashSet FieldLabel, HashMap FieldLabel Path)
   -> Translation a
   -> Translation (Maybe a)
 withScope (fields, aliases) action = do
-  traverse_ pushAlias aliases
+  traverse_ pushAlias $ M.toList aliases
   traverse_ pushField fields
   result <- tolerate action
   traverse_ popField fields
-  traverse_ popAndCheckAlias aliases
+  traverse_ popAndCheckAlias $ M.keys aliases
   pure result
 
 
@@ -188,11 +193,12 @@ resolve name = go
 
 resolveAlias :: Identifier -> Translation (Maybe Thunk)
 resolveAlias name = do
+  current <- use currentPath
   label <- translateIdentifier name
   uses visibleAliases (M.lookup label) >>=
     traverse \(fst . NE.head -> parentPath) -> do
       useAlias label
-      pure $ Alias parentPath label
+      pure $ Alias current parentPath label
 
 resolveField :: Identifier -> Translation (Maybe Thunk)
 resolveField name = do
@@ -255,9 +261,16 @@ translateBlock decls = do
 
 translateDeclaration
   :: Scope
-  -> (HashSet FieldLabel, HashSet FieldLabel, Translation BlockInfo)
+  -> ( HashSet FieldLabel
+     , HashMap FieldLabel Path
+     , Translation BlockInfo
+     )
   -> Declaration
-  -> Translation (HashSet FieldLabel, HashSet FieldLabel, Translation BlockInfo)
+  -> Translation
+       ( HashSet FieldLabel
+       , HashMap FieldLabel Path
+       , Translation BlockInfo
+       )
 translateDeclaration scope (fields, aliases, builder) = \case
   -- Attribute
   DeclarationAttribute Attribute {..} -> do
@@ -278,26 +291,27 @@ translateDeclaration scope (fields, aliases, builder) = \case
       refute $ error "scope conflict between alias and field" -- FIXME
     when (fieldLabel `S.member` fields) $
       refute $ error "scope conflict between alias and field" -- FIXME
-    when (fieldLabel `S.member` aliases) $
+    when (fieldLabel `M.member` aliases) $
       refute $ error "alias defined more than once" -- FIXME
     let
-      newAliases = S.insert fieldLabel aliases
+      pathItem   = PathLetClause fieldLabel
+      aliasPath  = _currentPath scope :|> pathItem
+      newAliases = M.insert fieldLabel aliasPath aliases
       newBuilder = do
         block <- builder
-        thunk <- recover $ fmap join $ withPath (PathLetClause fieldLabel) do
+        thunk <- recover $ fmap join $ withPath pathItem do
           -- WARNING: UNDOCUMENTED BEHAVIOUR
           -- special case for let clauses: we have to remove the let identifier
           -- itself from the scope, to prevent let clause self-recursion, and to
           -- prevent shadowing previous let clauses with the same name; this is
           -- undocumented behaviour, and it's unclear whether it is on purpose or
           -- not
-          wasUsed <- popAlias fieldLabel
-          result  <- tolerate $ translateExpr letExpression
-          pushAliasWith wasUsed fieldLabel
+          (path, wasUsed) <- popAlias fieldLabel
+          result <- tolerate $ translateExpr letExpression
+          pushAliasWith wasUsed (fieldLabel, path)
           pure result
-        pure $
-          block & biAliases %~
-            M.insert fieldLabel thunk
+        pure $ block
+          & biAliases . at fieldLabel ?~ (aliasPath, thunk)
     pure (fields, newAliases, newBuilder)
 
   -- Embedding
@@ -340,7 +354,7 @@ translateDeclaration scope (fields, aliases, builder) = \case
             refute $ error "scope conflict between alias and field" -- FIXME
           when (l `S.member` fields) $
             refute $ error "scope conflict between alias and field" -- FIXME
-          when (l `S.member` aliases) $
+          when (l `M.member` aliases) $
             refute $ error "alias defined more than once" -- FIXME
           pure l
         -- check for conflicts from the expression's alias (if any)
@@ -350,7 +364,7 @@ translateDeclaration scope (fields, aliases, builder) = \case
             refute $ error "scope conflict between alias and field" -- FIXME
           when (l `S.member` fields) $
             refute $ error "scope conflict between alias and field" -- FIXME
-          when (l `S.member` aliases) $
+          when (l `M.member` aliases) $
             refute $ error "alias defined more than once" -- FIXME
           pure l
         -- finally evaluate the expression
@@ -359,11 +373,13 @@ translateDeclaration scope (fields, aliases, builder) = \case
           -- the reference claims that the alias to an optional field is only visible
           -- within the definition of that field, but the playground disagrees; we make
           -- the alias visible to the whole block to be consistent
-          newAliases = maybe aliases (`S.insert` aliases) fAlias
+          pathItem   = PathStringField
+          aliasPath  = _currentPath scope :|> pathItem
+          newAliases = aliases & maybe id (flip M.insert aliasPath) fAlias
           newBuilder = do
             block <- builder
-            thunk <- recover $ fmap join $ withPath PathStringField do
-              whenJust eAlias pushAlias
+            thunk <- recover $ fmap join $ withPath pathItem do
+              whenJust eAlias pushAliasAtCurrentPath
               result  <- tolerate $ translateExpr aeExpression
               whenJust eAlias popAndCheckAlias
               pure result
@@ -377,7 +393,7 @@ translateDeclaration scope (fields, aliases, builder) = \case
               addField = biStringFields %~ (:|> (nameThunk, field))
               -- warning: we treat the alias as if it were an inlined copy of the
               -- field, instead of making an absolute reference to it
-              addAlias = maybe id (\a -> biAliases %~ M.insert a thunk) fAlias
+              addAlias = maybe id (\a -> biAliases %~ M.insert a (aliasPath, thunk)) fAlias
             pure $ block & addField & addAlias
         pure (fields, newAliases, newBuilder)
 
@@ -388,7 +404,7 @@ translateDeclaration scope (fields, aliases, builder) = \case
         -- check for conflicts from the field's name
         when (fieldName `M.member` _visibleAliases scope) $
           refute $ error "scope conflict between alias and field" -- FIXME
-        when (fieldName `S.member` aliases) $
+        when (fieldName `M.member` aliases) $
           refute $ error "scope conflict between alias and field" -- FIXME
         -- check for conflicts from the field's alias (if any)
         fAlias <- for labelAlias \a -> do
@@ -399,7 +415,7 @@ translateDeclaration scope (fields, aliases, builder) = \case
             refute $ error "scope conflict between alias and field" -- FIXME
           when (l `S.member` fields) $
             refute $ error "scope conflict between alias and field" -- FIXME
-          when (l `S.member` aliases) $
+          when (l `M.member` aliases) $
             refute $ error "alias defined more than once" -- FIXME
           pure l
         -- check for conflicts from the expression's alias (if any)
@@ -411,7 +427,7 @@ translateDeclaration scope (fields, aliases, builder) = \case
             refute $ error "scope conflict between alias and field" -- FIXME
           when (l `S.member` fields) $
             refute $ error "scope conflict between alias and field" -- FIXME
-          when (l `S.member` aliases) $
+          when (l `M.member` aliases) $
             refute $ error "alias defined more than once" -- FIXME
           pure l
         -- finally evaluate the expression
@@ -420,13 +436,15 @@ translateDeclaration scope (fields, aliases, builder) = \case
           -- the reference claims that the alias to an optional field is only visible
           -- within the definition of that field, but the playground disagrees; we make
           -- the alias visible to the whole block to be consistent
+          pathItem   = PathField fieldName
+          aliasPath  = _currentPath scope :|> pathItem
           newFields  = S.insert fieldName fields
-          newAliases = maybe aliases (`S.insert` aliases) fAlias
+          newAliases = aliases & maybe id (flip M.insert aliasPath) fAlias
           newBuilder = do
             block <- builder
             cpath <- use currentPath
-            thunk <- recover $ fmap join $ withPath (PathField fieldName) do
-              whenJust eAlias pushAlias
+            thunk <- recover $ fmap join $ withPath pathItem do
+              whenJust eAlias pushAliasAtCurrentPath
               result  <- tolerate $ translateExpr aeExpression
               whenJust eAlias popAndCheckAlias
               pure result
@@ -439,7 +457,7 @@ translateDeclaration scope (fields, aliases, builder) = \case
                 }
               aThunk = Ref $ cpath :|> PathField fieldName
               addField = biIdentFields %~ M.insertWith (flip (<>)) fieldName (pure field)
-              addAlias = maybe id (\a -> biAliases %~ M.insert a aThunk) fAlias
+              addAlias = maybe id (\a -> biAliases %~ M.insert a (aliasPath, aThunk)) fAlias
             pure $ block & addField & addAlias
         pure (newFields, newAliases, newBuilder)
 
@@ -459,7 +477,7 @@ translateDeclaration scope (fields, aliases, builder) = \case
             refute $ error "scope conflict between alias and field" -- FIXME
           when (l `S.member` fields) $
             refute $ error "scope conflict between alias and field" -- FIXME
-          when (l `S.member` aliases) $
+          when (l `M.member` aliases) $
             refute $ error "alias defined more than once" -- FIXME
           pure l
         -- check for conflicts from the expression's alias (if any)
@@ -469,7 +487,7 @@ translateDeclaration scope (fields, aliases, builder) = \case
             refute $ error "scope conflict between alias and field" -- FIXME
           when (l `S.member` fields) $
             refute $ error "scope conflict between alias and field" -- FIXME
-          when (l `S.member` aliases) $
+          when (l `M.member` aliases) $
             refute $ error "alias defined more than once" -- FIXME
           pure l
         let
@@ -479,8 +497,8 @@ translateDeclaration scope (fields, aliases, builder) = \case
             condThunk <- recover $ withPath PathConstraint $ translateExpr consExpr
             -- evaluate the expression
             exprThunk <- recover do
-              whenJust cAlias pushAlias
-              whenJust eAlias pushAlias
+              whenJust cAlias pushAliasAtCurrentPath
+              whenJust eAlias pushAliasAtCurrentPath
               result  <- tolerate $ translateExpr exprExpr
               whenJust eAlias popAndCheckAlias
               whenJust cAlias popAndCheckAlias
