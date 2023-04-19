@@ -11,6 +11,10 @@ module Prelude
     -- * maybe helpers
   , onNothing
   , onNothingM
+    -- * nested fmaps
+  , fmap2
+  , (<<$>>)
+  , (<<&>>)
   ) where
 
 
@@ -77,6 +81,21 @@ onNothing a d = maybe d pure a
 
 onNothingM :: Monad m => m (Maybe a) -> m a -> m a
 onNothingM a d = a >>= flip onNothing d
+
+
+--------------------------------------------------------------------------------
+-- Nested fmap
+
+fmap2 :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
+fmap2 = fmap . fmap
+
+(<<$>>) :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
+(<<$>>) = fmap2
+infixl 4 <<$>>
+
+(<<&>>) :: (Functor f, Functor g) => f (g a) -> (a -> b) -> f (g b)
+(<<&>>) = flip fmap2
+infixl 1 <<&>>
 
 
 --------------------------------------------------------------------------------
