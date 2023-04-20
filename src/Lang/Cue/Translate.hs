@@ -393,12 +393,6 @@ translateDeclaration scope (fields, aliases, builder) (declIndex, decl) = case d
                 }
               aThunk = Ref $ cpath :|> pathItem
               addField = biStringFields . at declIndex ?~ (nameThunk, field)
-              -- FIXME: we treat the alias as if it were an inlined copy of the
-              -- field, instead of making an absolute reference to it in order
-              -- to allow for field laziness in recursive alias declarations, we
-              -- must make the alias thunk a reference to the field, which we
-              -- can't do until we modify Select / introduce a new special
-              -- Select
               addAlias = maybe id (\a -> biAliases . at a ?~ (pathItem, aThunk)) fAlias
             pure $ block & addField & addAlias
         pure (fields, newAliases, newBuilder)

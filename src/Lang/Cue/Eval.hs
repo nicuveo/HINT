@@ -1,4 +1,7 @@
-module Lang.Cue.Eval where
+module Lang.Cue.Eval
+  ( -- inlining phase
+    inlineAliases
+  ) where
 
 import "this" Prelude                  hiding (negate, product, sum)
 
@@ -30,6 +33,7 @@ newtype Eval a = Eval { runEval :: a }
 eval :: Expression -> Value
 eval = runEval . evalExpression
 -}
+
 
 --------------------------------------------------------------------------------
 -- * Path substitution

@@ -20,8 +20,9 @@ TODO:
     - [ ] benchmarking?
   - AST
     - [ ] carry location throughout the AST
-  - Evaluation
+  - IR:
     - [ ] can i make thunks `Void` when a value is concrete?
+    - [ ] can i use trees that grow or equivalent to make aliases `Void` after inlining?
 
 Questions to ask to the CUE community:
   - [ ] the go implementation accepts tokens that are not mentioned in the documentation, such as the power operator `^` and the arrow operator `<-`; are those only supported for the sake of attributes?
