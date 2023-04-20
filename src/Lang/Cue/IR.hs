@@ -106,12 +106,12 @@ type Unification = Seq Thunk
 -- * Block
 
 data BlockInfo = BlockInfo
-  { _biAttributes   :: Attributes
-  , _biAliases      :: HashMap FieldLabel (PathElem, Thunk)
+  { _biAliases      :: HashMap FieldLabel (PathElem, Thunk)
   , _biIdentFields  :: HashMap FieldLabel (Seq Field)
-  , _biStringFields :: Seq (Thunk, Field)
+  , _biStringFields :: HashMap Int (Thunk, Field)
+  , _biConstraints  :: HashMap Int (Thunk, Thunk)
   , _biEmbeddings   :: Seq Embedding
-  , _biConstraints  :: Seq (Thunk, Thunk)
+  , _biAttributes   :: Attributes
   , _biClosed       :: Bool
   } deriving (Show, Eq)
 
@@ -192,11 +192,15 @@ type Path = Seq PathElem
 -- | Not all fields have a valid absolute path; we must keep track of how we
 -- reached a field by storing each individual step. Embeddings do not get a path
 -- item since their resulting value will be inlined.
+--
+-- For string fields, we use an arbitrary int that corresponds to a key in the
+-- block's fields map. This allows us to point to fields even if their name
+-- contains an unevaluated thunk. We do the same thing for constraints.
 data PathElem
   = PathField FieldLabel
   | PathLetClause FieldLabel
-  | PathStringField
-  | PathConstraint
+  | PathStringField Int
+  | PathConstraint Int
   deriving (Show, Eq, Generic)
 
 instance Hashable PathElem
@@ -411,20 +415,20 @@ instance (HasThunks a, HasThunks b) => HasThunks (a, b) where
 
 instance HasThunks BlockInfo where
   thunks f BlockInfo {..} = BlockInfo
-    <$> pure _biAttributes
-    <*> (traverse . traverse) f _biAliases
+    <$> (traverse . traverse) f _biAliases
     <*> thunks f _biIdentFields
     <*> thunks f _biStringFields
-    <*> thunks f _biEmbeddings
     <*> thunks f _biConstraints
+    <*> thunks f _biEmbeddings
+    <*> pure _biAttributes
     <*> pure _biClosed
   indexedThunks p f BlockInfo {..} = BlockInfo
-    <$> pure _biAttributes
-    <*> traverse (\(e, t) -> (e,) <$> indexedThunks (p :|> e) f t) _biAliases
-    <*> M.traverseWithKey (\l t -> indexedThunks (p :|> PathField l) f t) _biIdentFields
-    <*> indexedThunks (p :|> PathStringField) f _biStringFields
+    <$> traverse (\(e, t) -> (e,) <$> indexedThunks (p :|> e) f t) _biAliases
+    <*> M.traverseWithKey (\l -> indexedThunks (p :|> PathField       l) f) _biIdentFields
+    <*> M.traverseWithKey (\i -> indexedThunks (p :|> PathStringField i) f) _biStringFields
+    <*> M.traverseWithKey (\i -> indexedThunks (p :|> PathConstraint  i) f) _biConstraints
     <*> indexedThunks p f _biEmbeddings
-    <*> indexedThunks (p :|> PathConstraint) f _biConstraints
+    <*> pure _biAttributes
     <*> pure _biClosed
 
 instance HasThunks Field where

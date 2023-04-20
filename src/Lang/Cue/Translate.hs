@@ -241,19 +241,21 @@ translateBlock :: [Declaration] -> Translation BlockInfo
 translateBlock decls = do
   scope <- get
   let startBlock = BlockInfo
-        { _biAttributes   = M.empty
-        , _biAliases      = M.empty
+        { _biAliases      = M.empty
         , _biIdentFields  = M.empty
-        , _biStringFields = Seq.empty
+        , _biStringFields = M.empty
+        , _biConstraints  = M.empty
         , _biEmbeddings   = Seq.empty
-        , _biConstraints  = Seq.empty
+        , _biAttributes   = M.empty
         , _biClosed       = False
         }
   -- we traverse all the declarations; doing so, we collect all the fields and
   -- aliases to add to the current scope, and the monadic actions to run in the
   -- update scope
-  (blockFields, blockAliases, blockBuilder) <-
-    foldM (translateDeclaration scope) (mempty, mempty, pure startBlock) decls
+  (blockFields, blockAliases, blockBuilder) <- foldM
+    (translateDeclaration scope)
+    (mempty, mempty, pure startBlock)
+    (L.zip [0..] decls)
   block <- withScope (blockFields, blockAliases) blockBuilder
   pure $ fromMaybe startBlock block
 
@@ -263,13 +265,13 @@ translateDeclaration
      , HashMap FieldLabel Path
      , Translation BlockInfo
      )
-  -> Declaration
+  -> (Int, Declaration)
   -> Translation
        ( HashSet FieldLabel
        , HashMap FieldLabel Path
        , Translation BlockInfo
        )
-translateDeclaration scope (fields, aliases, builder) = \case
+translateDeclaration scope (fields, aliases, builder) (declIndex, decl) = case decl of
   -- Attribute
   DeclarationAttribute Attribute {..} -> do
     let
@@ -371,11 +373,12 @@ translateDeclaration scope (fields, aliases, builder) = \case
           -- the reference claims that the alias to an optional field is only visible
           -- within the definition of that field, but the playground disagrees; we make
           -- the alias visible to the whole block to be consistent
-          pathItem   = PathStringField
+          pathItem   = PathStringField declIndex
           aliasPath  = _currentPath scope :|> pathItem
           newAliases = aliases & maybe id (flip M.insert aliasPath) fAlias
           newBuilder = do
             block <- builder
+            cpath <- use currentPath
             thunk <- recover $ fmap join $ withPath pathItem do
               whenJust eAlias pushAliasAtCurrentPath
               result  <- tolerate $ translateExpr aeExpression
@@ -388,14 +391,15 @@ translateDeclaration scope (fields, aliases, builder) = \case
                 , fieldOptional   = opt
                 , fieldAttributes = translateAttributes fieldAttributes
                 }
-              addField = biStringFields %~ (:|> (nameThunk, field))
+              aThunk = Ref $ cpath :|> pathItem
+              addField = biStringFields . at declIndex ?~ (nameThunk, field)
               -- FIXME: we treat the alias as if it were an inlined copy of the
               -- field, instead of making an absolute reference to it in order
               -- to allow for field laziness in recursive alias declarations, we
               -- must make the alias thunk a reference to the field, which we
               -- can't do until we modify Select / introduce a new special
               -- Select
-              addAlias = maybe id (\a -> biAliases %~ M.insert a (pathItem, thunk)) fAlias
+              addAlias = maybe id (\a -> biAliases . at a ?~ (pathItem, aThunk)) fAlias
             pure $ block & addField & addAlias
         pure (fields, newAliases, newBuilder)
 
@@ -457,9 +461,9 @@ translateDeclaration scope (fields, aliases, builder) = \case
                 , fieldOptional   = opt
                 , fieldAttributes = translateAttributes fieldAttributes
                 }
-              aThunk = Ref $ cpath :|> PathField fieldName
+              aThunk = Ref $ cpath :|> pathItem
               addField = biIdentFields %~ M.insertWith (flip (<>)) fieldName (pure field)
-              addAlias = maybe id (\a -> biAliases %~ M.insert a (pathItem, aThunk)) fAlias
+              addAlias = maybe id (\a -> biAliases .at a ?~ (pathItem, aThunk)) fAlias
             pure $ block & addField & addAlias
         pure (newFields, newAliases, newBuilder)
 
@@ -493,12 +497,13 @@ translateDeclaration scope (fields, aliases, builder) = \case
             refute $ error "alias defined more than once" -- FIXME
           pure l
         let
+          pathItem   = PathConstraint declIndex
           newBuilder = do
             block <- builder
             -- evaluate the condition
-            condThunk <- recover $ withPath PathConstraint $ translateExpr consExpr
+            condThunk <- recover $ tolerate $ translateExpr consExpr
             -- evaluate the expression
-            exprThunk <- recover do
+            exprThunk <- recover $ fmap join $ withPath pathItem do
               whenJust cAlias pushAliasAtCurrentPath
               whenJust eAlias pushAliasAtCurrentPath
               result  <- tolerate $ translateExpr exprExpr
@@ -507,7 +512,7 @@ translateDeclaration scope (fields, aliases, builder) = \case
               pure result
             -- TODO: this isn't enough representation, it's missing attributes and
             -- aliases
-            pure $ block & biConstraints %~ (:|> (condThunk, exprThunk))
+            pure $ block & biConstraints . at declIndex ?~ (condThunk, exprThunk)
         pure (fields, aliases, newBuilder)
 
 -- | Recursively translates a comprehension clause.

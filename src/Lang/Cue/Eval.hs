@@ -150,10 +150,10 @@ inlineAliases = itransformM go Empty
   where
     go absolutePath = _Block \b@BlockInfo {..} -> do
       let
-        updateIdentFields = M.mapWithKey \l ->
-          fmap  $ inlineFieldAlias (absolutePath :|> PathField l)
-        updateStringFields =
-          fmap2 $ inlineFieldAlias (absolutePath :|> PathStringField)
+        updateIdentFields  = M.mapWithKey \l ->
+          fmap $ inlineFieldAlias (absolutePath :|> PathField       l)
+        updateStringFields = M.mapWithKey \i ->
+          fmap $ inlineFieldAlias (absolutePath :|> PathStringField i)
         updatedBlock = b
           & biIdentFields  %~ updateIdentFields
           & biStringFields %~ updateStringFields
@@ -164,7 +164,7 @@ inlineFieldAlias :: Path -> Field -> Field
 inlineFieldAlias path f = case fieldAlias f of
   Nothing   -> f
   Just name -> f { fieldAlias = Nothing }
-    & thunks %~ inlineInThunk path name (fieldValue f) path
+    & thunks %~ inlineInThunk path name (Ref path) path
 
 -- | Given an alias appearing in a block, replace it in all other expressions.
 inlineBlockAlias :: Path -> BlockInfo -> FieldLabel -> Either Errors BlockInfo
