@@ -92,9 +92,9 @@ substitutePaths old new = transform $ _Ref %~ modifyPath
 -- cannot co-exist. Consequently, every occurence of a reference to an alias can
 -- be replaced by the thunk associated with the alias.
 --
--- Aliases are a bit more strict wrt. cycles than fields are: if an alias
--- appears within its own definition, inlining fails, even if the definitions
--- would be valid recursive fields.
+-- Aliases in let clauses are a bit more strict wrt. cycles than fields or other
+-- aliases are: if an alias appears within its own definition, inlining fails,
+-- even if the definitions would be valid recursive fields.
 --
 -- For instance, this is valid:
 --
@@ -107,9 +107,11 @@ substitutePaths old new = transform $ _Ref %~ modifyPath
 --     let b = {c:0, r: a.c}
 --
 -- Furthermore, this is a "compilation error", not a bottom: an inlining error
--- makes the entire computation fail. However, this function doesn't detect
--- field cycles. But any attempt at evaluting an alias after inline is done can
--- be correctly identified as a field cycle.
+-- makes the entire computation fail. However, other cycles are not fatal, and
+-- this function ignores them.
+--
+-- Since this function inlines all aliases, encountering an alias in the IR
+-- after this phase can be correctly diagniosed as the result of a cycle.
 --
 -- Consider this contrived example:
 --
@@ -147,9 +149,13 @@ inlineAliases = fmap snd . transformM go . (Empty,)
   where
     go t@(absolutePath, _) = t & (_2 . _Block) \b@BlockInfo {..} -> do
       let
+        updateIdentFields = M.mapWithKey \l ->
+          fmap  $ inlineFieldAlias (absolutePath :|> PathField l)
+        updateStringFields =
+          fmap2 $ inlineFieldAlias (absolutePath :|> PathStringField)
         updatedBlock = b
-          & biIdentFields  . traverse . traverse %~ inlineFieldAlias absolutePath
-          & biStringFields . traverse . traverse %~ inlineFieldAlias absolutePath
+          & biIdentFields  %~ updateIdentFields
+          & biStringFields %~ updateStringFields
       foldM (inlineBlockAlias absolutePath) updatedBlock $ M.keys _biAliases
 
 -- | Inline a field alias, if any.

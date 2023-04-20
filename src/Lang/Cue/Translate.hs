@@ -389,8 +389,12 @@ translateDeclaration scope (fields, aliases, builder) = \case
                 , fieldAttributes = translateAttributes fieldAttributes
                 }
               addField = biStringFields %~ (:|> (nameThunk, field))
-              -- warning: we treat the alias as if it were an inlined copy of the
-              -- field, instead of making an absolute reference to it
+              -- FIXME: we treat the alias as if it were an inlined copy of the
+              -- field, instead of making an absolute reference to it in order
+              -- to allow for field laziness in recursive alias declarations, we
+              -- must make the alias thunk a reference to the field, which we
+              -- can't do until we modify Select / introduce a new special
+              -- Select
               addAlias = maybe id (\a -> biAliases %~ M.insert a (pathItem, thunk)) fAlias
             pure $ block & addField & addAlias
         pure (fields, newAliases, newBuilder)
