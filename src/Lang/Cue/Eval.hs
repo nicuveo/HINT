@@ -164,8 +164,13 @@ substitutePaths old new = transform $ _Ref %~ modifyPath
 -- explicitly, but modelled after the behaviour of the playground.
 --
 -- This function traverses the thunk hierarchy; and for each alias in each block
--- replaces all downstrean uses of that alias. WARNING: this is probably
--- exponential? can we do better by maintaining a context manually?
+-- replaces all downstrean uses of that alias. On success, the output is
+-- guaranteed not to contain any alias anymore.
+--
+-- WARNING: this is probably exponential: for each block we encounter we start
+-- several traversals of some of the underlying thunks. Can we rewrite this as
+-- one traversal, or does this become complicated wrt. mutually recursive let
+-- clauses?
 inlineAliases :: Thunk -> Either Errors Thunk
 inlineAliases = itransformM go Empty
   where
