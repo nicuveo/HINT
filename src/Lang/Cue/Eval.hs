@@ -89,9 +89,10 @@ substitutePaths old new = transform $ _Ref %~ modifyPath
 --------------------------------------------------------------------------------
 -- * Alias inlining
 
--- | Alias can never be overloaded, and an alias and a field with the same name
--- cannot co-exist. Consequently, every occurence of a reference to an alias can
--- be replaced by the thunk associated with the alias.
+-- | Aliases can never be overloaded, and an alias and a field with the same
+-- name cannot co-exist. Consequently, every occurence of a reference to an
+-- alias can be replaced by the thunk associated with the alias or a field
+-- reference to the field it points to.
 --
 -- Aliases in let clauses are a bit more strict wrt. cycles than fields or other
 -- aliases are: if an alias appears within its own definition, inlining fails,
@@ -99,48 +100,68 @@ substitutePaths old new = transform $ _Ref %~ modifyPath
 --
 -- For instance, this is valid:
 --
---     a: b
---     b: {c:0, r: a.c}
+--     let a = b
+--     b = v: {c:0, r: a.c}
 --
 -- but this isn't:
 --
 --     let a = b
 --     let b = {c:0, r: a.c}
 --
--- Furthermore, this is a "compilation error", not a bottom: an inlining error
--- makes the entire computation fail. However, other cycles are not fatal, and
--- this function ignores them.
+-- the reason for this is that fields are *lazy*, and can therefore be mutually
+-- recursive, as long as they can ultimately be resolved, as in the example
+-- above. All aliases except for let clauses can be replaced by a reference to a
+-- field:
 --
--- Since this function inlines all aliases, encountering an alias in the IR
--- after this phase can be correctly diagniosed as the result of a cycle.
+--     a = v: 42   // a ref to v can be replaced with an abolute ref to a
+--     v: a = 42   // a ref to v can be replaced with an abolute ref to a
+--     let u = a   // cannot be replaced with a field, has to be inlined
 --
--- Consider this contrived example:
+-- in practice that means that we are delegating the task of detecting cycles to
+-- the evaluation, since most alias inlining just replaces them with a field
+-- reference.
 --
---     a: z = {
---       b: {x: 0}
---       c: {a: z.b.x}
---     }
---     let f = g
---     let g = f
---     b: f
+-- However, in the case of let clauses, we can't rely on field laziness, since
+-- there is no field to refer to, we therefore have to inline the full
+-- expression everywhere. In theory, this could still potentially result in
+-- something valid, such as the following:
 --
--- after inlining z, we get:
+--     // infinite list of zeroes
+--     let zeroes = {car: 0, cdr: zs}
 --
---     a: {
---       b: {x: 0}
---       c: {a: {b: {x: 0}, c: {a: z.b.x}}.b.x}
---     }
+--     // let clauses' names aren't visible in their own scope
+--     let zs = zeroes
 --
--- this is valid, as fields are lazy: since we only extract the @b@ field out of
--- the inlined @z@ expression, this will not result in an evaluation error
+--     // res is just one 0
+--     res: zeroes.cdr.cdr.car
 --
--- after inlining f, we get:
+-- In practice, this doesn't work even if we make zeroes a field, since zeroes
+-- itself would not be representable; but in theory this could be resolved with
+-- laziness, but the language rejects it. The main reason (i suspect) is that
+-- not only we can never remove the alias, but also that we would need more than
+-- one inlining to be able to compute the result. With other aliases, after one
+-- inlining, the IR contains a field reference, but no longer an alias
+-- reference. But in this case, after inlining @zs@ then @zeroes@, we get:
 --
---     let f = g
---     let g = g
---     b: g
+--     let zeroes = {car: 0, cdr: {car: 0, cdr: zeroes}}
+--     res: u.cdr.cdr.car
 --
--- when inlining g, we detect that g contains itself, and we fail.
+-- @zeroes@ still contains an alias reference to itself, and furthermore we
+-- would need a second inlining of it to be able to compute `res`.
+--
+-- For simplicity, the language simply rejects this. The way it does is simple:
+-- it checks whether the alias refers to itself. Here, whether we inline @zs@ or
+-- @zeroes@ first, we get the other one to contain a reference to itself:
+--
+--     // inlining zs first
+--     let zeroes = {car: 0, cdr: zeroes}
+--
+--     // inlining zeroes first
+--     let zs = {car: 0, cdr: zs}
+--
+-- Furthermore, this is a "compilation error", not a bottom: finding such a
+-- cycle makes the entire computation fail. This behaviour is not documented
+-- explicitly, but modelled after the behaviour of the playground.
 --
 -- This function traverses the thunk hierarchy; and for each alias in each block
 -- replaces all downstrean uses of that alias. WARNING: this is probably
