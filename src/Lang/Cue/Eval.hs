@@ -113,8 +113,8 @@ substitutePaths old new = transform $ _Ref %~ modifyPath
 -- above. All aliases except for let clauses can be replaced by a reference to a
 -- field:
 --
---     a = v: 42   // a ref to v can be replaced with an abolute ref to a
---     v: a = 42   // a ref to v can be replaced with an abolute ref to a
+--     a = v: 42   // a ref to @a@ can be replaced with an abolute ref to @v@
+--     v: a = 42   // a ref to @a@ can be replaced with an abolute ref to @v@
 --     let u = a   // cannot be replaced with a field, has to be inlined
 --
 -- in practice that means that we are delegating the task of detecting cycles to
