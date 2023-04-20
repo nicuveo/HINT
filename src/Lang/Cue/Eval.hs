@@ -163,7 +163,8 @@ inlineAliases = itransformM go Empty
 inlineFieldAlias :: Path -> Field -> Field
 inlineFieldAlias path f = case fieldAlias f of
   Nothing   -> f
-  Just name -> f & thunks %~ inlineInThunk path name (fieldValue f) path
+  Just name -> f { fieldAlias = Nothing }
+    & thunks %~ inlineInThunk path name (fieldValue f) path
 
 -- | Given an alias appearing in a block, replace it in all other expressions.
 inlineBlockAlias :: Path -> BlockInfo -> FieldLabel -> Either Errors BlockInfo
