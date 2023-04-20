@@ -14,7 +14,7 @@ import Text.Pretty.Simple
 
 import Lang.Cue.Error
 import Lang.Cue.Eval
-import Lang.Cue.HKD
+import Lang.Cue.Internal.HKD
 import Lang.Cue.Lexer
 import Lang.Cue.Location
 import Lang.Cue.Parser

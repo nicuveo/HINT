@@ -28,11 +28,12 @@ library
       Lang.Cue.Document
       Lang.Cue.Error
       Lang.Cue.Eval
-      Lang.Cue.HKD
+      Lang.Cue.Internal.HKD
+      Lang.Cue.Internal.IndexedPlated
+      Lang.Cue.Internal.NoShow
       Lang.Cue.IR
       Lang.Cue.Lexer
       Lang.Cue.Location
-      Lang.Cue.NoShow
       Lang.Cue.Parser
       Lang.Cue.Printer
       Lang.Cue.Tokens
@@ -42,6 +43,7 @@ library
   hs-source-dirs:
       src
   default-extensions:
+      Haskell2010
       AllowAmbiguousTypes
       ApplicativeDo
       BangPatterns
@@ -106,11 +108,12 @@ executable evalexpr
       Lang.Cue.Document
       Lang.Cue.Error
       Lang.Cue.Eval
-      Lang.Cue.HKD
+      Lang.Cue.Internal.HKD
+      Lang.Cue.Internal.IndexedPlated
+      Lang.Cue.Internal.NoShow
       Lang.Cue.IR
       Lang.Cue.Lexer
       Lang.Cue.Location
-      Lang.Cue.NoShow
       Lang.Cue.Parser
       Lang.Cue.Printer
       Lang.Cue.Tokens
@@ -121,6 +124,7 @@ executable evalexpr
       src
       app
   default-extensions:
+      Haskell2010
       AllowAmbiguousTypes
       ApplicativeDo
       BangPatterns
@@ -191,11 +195,12 @@ test-suite tests
       Lang.Cue.Document
       Lang.Cue.Error
       Lang.Cue.Eval
-      Lang.Cue.HKD
+      Lang.Cue.Internal.HKD
+      Lang.Cue.Internal.IndexedPlated
+      Lang.Cue.Internal.NoShow
       Lang.Cue.IR
       Lang.Cue.Lexer
       Lang.Cue.Location
-      Lang.Cue.NoShow
       Lang.Cue.Parser
       Lang.Cue.Printer
       Lang.Cue.Tokens
@@ -207,6 +212,7 @@ test-suite tests
       src
       test
   default-extensions:
+      Haskell2010
       AllowAmbiguousTypes
       ApplicativeDo
       BangPatterns

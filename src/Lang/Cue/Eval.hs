@@ -1,12 +1,13 @@
 module Lang.Cue.Eval where
 
-import "this" Prelude      hiding (negate, product, sum)
+import "this" Prelude                  hiding (negate, product, sum)
 
-import Control.Lens        hiding (Empty)
-import Data.HashMap.Strict qualified as M
-import Data.Sequence       as S
+import Control.Lens                    hiding (Empty)
+import Data.HashMap.Strict             qualified as M
+import Data.Sequence                   as S
 
 import Lang.Cue.Error
+import Lang.Cue.Internal.IndexedPlated
 import Lang.Cue.IR
 
 
@@ -145,9 +146,9 @@ substitutePaths old new = transform $ _Ref %~ modifyPath
 -- replaces all downstrean uses of that alias. WARNING: this is probably
 -- exponential? can we do better by maintaining a context manually?
 inlineAliases :: Thunk -> Either Errors Thunk
-inlineAliases = fmap snd . transformM go . (Empty,)
+inlineAliases = itransformM go Empty
   where
-    go t@(absolutePath, _) = t & (_2 . _Block) \b@BlockInfo {..} -> do
+    go absolutePath = _Block \b@BlockInfo {..} -> do
       let
         updateIdentFields = M.mapWithKey \l ->
           fmap  $ inlineFieldAlias (absolutePath :|> PathField l)
@@ -162,7 +163,7 @@ inlineAliases = fmap snd . transformM go . (Empty,)
 inlineFieldAlias :: Path -> Field -> Field
 inlineFieldAlias path f = case fieldAlias f of
   Nothing   -> f
-  Just name -> f & thunksWithPath path %~ inlineInThunk path name (fieldValue f)
+  Just name -> f & thunks %~ inlineInThunk path name (fieldValue f) path
 
 -- | Given an alias appearing in a block, replace it in all other expressions.
 inlineBlockAlias :: Path -> BlockInfo -> FieldLabel -> Either Errors BlockInfo
@@ -176,12 +177,14 @@ inlineBlockAlias blockPath b@BlockInfo {..} alias = do
   -- then delete the current alias and update all thunks
   pure $ b
     & biAliases %~ sans alias
-    & thunksWithPath blockPath %~ inline
+    & indexedThunks blockPath %@~ inline
 
-inlineInThunk :: Path -> FieldLabel -> Thunk -> (Path, Thunk) -> (Path, Thunk)
-inlineInThunk path name new = transform \(l, t) -> case t of
-  Alias p n | path == p, name == n -> (l, substitutePaths p l new)
-  _                                -> (l, t)
+inlineInThunk :: Path -> FieldLabel -> Thunk -> Path -> Thunk -> Thunk
+inlineInThunk varPath name new = itransform go
+  where
+    go l = \case
+      Alias p n | varPath == p, name == n -> substitutePaths p l new
+      t                                   -> t
 
 errorOnCycle :: Path -> FieldLabel -> Thunk -> Either Errors ()
 errorOnCycle path name = void . transformM \case

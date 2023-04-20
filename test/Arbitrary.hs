@@ -40,7 +40,6 @@ instance
   , Arbitrary (HKD f Keyword)
   , Arbitrary (HKD f Operator)
   , Arbitrary (HKD f Attribute)
-  , Arbitrary (HKD f (String, Text))
   , Arbitrary (HKD f (Positive Integer))
   , Arbitrary (HKD f (Positive Double))
   , Arbitrary (HKD f ())
@@ -56,8 +55,7 @@ instance
     , do
         og <- arbitrary :: Gen (HKD f ())
         t  <- arbitraryText
-        let delim = "\"" :: String
-        pure $ TokenString $ hmap @f @() (const (delim, t)) og
+        pure $ TokenString $ hmap @f @() (const (TextInfo SingleLineString 0, t)) og
     ]
 
 instance Arbitrary Identifier where
@@ -350,9 +348,9 @@ instance Arbitrary Literal where
       , pure BottomLiteral
       ]
     , guard (s > 0) *>
-      [ StringLiteral <$> scale (`div` 5) arbitraryStringLiteral
+      [ StringLiteral (TextInfo SingleLineString 0) <$> scale (`div` 5) arbitraryStringLiteral
       , StructLiteral <$> scale (`div` 5) arbitrary
-      , ListLiteral   <$> scale (`div` 5) arbitrary
+      , ListLiteral <$> scale (`div` 5) arbitrary
       ]
     ]
   shrink = \case

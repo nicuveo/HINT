@@ -4,13 +4,14 @@ module Lang.Cue.IR where
 
 import                "this" Prelude
 
-import                Control.Lens        hiding (List)
-import                Data.HashMap.Strict qualified as M
+import                Control.Lens                    hiding (List)
+import                Data.HashMap.Strict             qualified as M
 import                Data.Sequence
 
-import                Lang.Cue.AST        qualified as A
-import {-# SOURCE #-} Lang.Cue.Document   qualified as D
-import                Lang.Cue.Tokens     qualified as T
+import                Lang.Cue.AST                    qualified as A
+import {-# SOURCE #-} Lang.Cue.Document               qualified as D
+import                Lang.Cue.Internal.IndexedPlated
+import                Lang.Cue.Tokens                 qualified as T
 
 
 --------------------------------------------------------------------------------
@@ -331,8 +332,8 @@ instance Plated Thunk where
     Top                  -> pure Top
     Bottom               -> pure Bottom
 
-instance Plated (Path, Thunk) where
-  plate fi (path, token) = fmap (path,) $ case token of
+instance IndexedPlated (Seq PathElem) Thunk where
+  indexedPlate path g = \case
     Disjunction        d -> Disjunction        <$> (traverse . _2) f d
     Unification        u -> Unification        <$> traverse f u
     LogicalOr      t1 t2 -> LogicalOr          <$> f t1 <*> f t2
@@ -364,8 +365,8 @@ instance Plated (Path, Thunk) where
     Slice          t i j -> Slice              <$> f t <*> f i <*> f j
     Call           t   a -> Call               <$> f t <*> traverse f a
     Interpolation    i l -> Interpolation i    <$> traverse f l
-    List               l -> List               <$> thunksWithPath path fi l
-    Block              b -> Block              <$> thunksWithPath path fi b
+    List               l -> List               <$> indexedThunks path g l
+    Block              b -> Block              <$> indexedThunks path g b
     Type               t -> pure $ Type  t
     Func               z -> pure $ Func  z
     Ref                r -> pure $ Ref   r
@@ -374,39 +375,39 @@ instance Plated (Path, Thunk) where
     Top                  -> pure Top
     Bottom               -> pure Bottom
     where
-      f = fmap snd . fi . (path,)
+      f = indexed g path
 
 class HasThunks a where
   thunks :: Traversal' a Thunk
-  thunksWithPath :: Path -> Traversal' a (Path, Thunk)
+  indexedThunks :: Path -> IndexedTraversal' Path a Thunk
 
 instance HasThunks Thunk where
   thunks = id
-  thunksWithPath path fi t = snd <$> fi (path, t)
+  indexedThunks path fi = indexed fi path
 
 instance HasThunks a => HasThunks [a] where
   thunks = traverse . thunks
-  thunksWithPath p = traverse . thunksWithPath p
+  indexedThunks p = traverse . indexedThunks p
 
 instance HasThunks a => HasThunks (Seq a) where
   thunks = traverse . thunks
-  thunksWithPath p = traverse . thunksWithPath p
+  indexedThunks p = traverse . indexedThunks p
 
 instance HasThunks a => HasThunks (Maybe a) where
   thunks = traverse . thunks
-  thunksWithPath p = traverse . thunksWithPath p
+  indexedThunks p = traverse . indexedThunks p
 
 instance HasThunks a => HasThunks (NonEmpty a) where
   thunks = traverse . thunks
-  thunksWithPath p = traverse . thunksWithPath p
+  indexedThunks p = traverse . indexedThunks p
 
 instance HasThunks a => HasThunks (HashMap k a) where
   thunks = traverse . thunks
-  thunksWithPath p = traverse . thunksWithPath p
+  indexedThunks p = traverse . indexedThunks p
 
 instance (HasThunks a, HasThunks b) => HasThunks (a, b) where
   thunks = beside thunks thunks
-  thunksWithPath p = traverse . thunksWithPath p
+  indexedThunks p = traverse . indexedThunks p
 
 instance HasThunks BlockInfo where
   thunks f BlockInfo {..} = BlockInfo
@@ -417,17 +418,13 @@ instance HasThunks BlockInfo where
     <*> thunks f _biEmbeddings
     <*> thunks f _biConstraints
     <*> pure _biClosed
-  thunksWithPath p f BlockInfo {..} = BlockInfo
+  indexedThunks p f BlockInfo {..} = BlockInfo
     <$> pure _biAttributes
-    <*> traverse
-        (\(e, t) -> (e,) <$> thunksWithPath (p :|> e) f t)
-        _biAliases
-    <*> M.traverseWithKey
-        (\l t -> thunksWithPath (p :|> PathField l) f t)
-        _biIdentFields
-    <*> thunksWithPath (p :|> PathStringField) f _biStringFields
-    <*> thunksWithPath p f _biEmbeddings
-    <*> thunksWithPath (p :|> PathConstraint) f _biConstraints
+    <*> traverse (\(e, t) -> (e,) <$> indexedThunks (p :|> e) f t) _biAliases
+    <*> M.traverseWithKey (\l t -> indexedThunks (p :|> PathField l) f t) _biIdentFields
+    <*> indexedThunks (p :|> PathStringField) f _biStringFields
+    <*> indexedThunks p f _biEmbeddings
+    <*> indexedThunks (p :|> PathConstraint) f _biConstraints
     <*> pure _biClosed
 
 instance HasThunks Field where
@@ -436,9 +433,9 @@ instance HasThunks Field where
     <*> f fieldValue
     <*> pure fieldOptional
     <*> pure fieldAttributes
-  thunksWithPath p f Field {..} = Field
+  indexedThunks p f Field {..} = Field
     <$> pure fieldAlias
-    <*> thunksWithPath p f fieldValue
+    <*> indexedThunks p f fieldValue
     <*> pure fieldOptional
     <*> pure fieldAttributes
 
@@ -446,9 +443,9 @@ instance HasThunks ListInfo where
   thunks f ListInfo {..} = ListInfo
     <$> thunks f listElements
     <*> thunks f listConstraint
-  thunksWithPath p f ListInfo {..} = ListInfo
-    <$> thunksWithPath p f listElements
-    <*> thunksWithPath p f listConstraint
+  indexedThunks p f ListInfo {..} = ListInfo
+    <$> indexedThunks p f listElements
+    <*> indexedThunks p f listConstraint
 
 instance HasThunks Embedding where
   thunks f = \case
@@ -457,12 +454,12 @@ instance HasThunks Embedding where
     Comprehension c b -> Comprehension
       <$> thunks f c
       <*> thunks f b
-  thunksWithPath p f = \case
+  indexedThunks p f = \case
     InlineThunk t -> InlineThunk
-      <$> thunksWithPath p f t
+      <$> indexedThunks p f t
     Comprehension c b -> Comprehension
-      <$> thunksWithPath p f c
-      <*> thunksWithPath p f b
+      <$> indexedThunks p f c
+      <*> indexedThunks p f b
 
 instance HasThunks Clause where
   thunks f = \case
@@ -470,8 +467,8 @@ instance HasThunks Clause where
     IndexedFor i x t -> IndexedFor i x <$> f t
     If             t -> If             <$> f t
     Let          l t -> Let          l <$> f t
-  thunksWithPath p f = \case
-    For          x t -> For          x <$> thunksWithPath p f t
-    IndexedFor i x t -> IndexedFor i x <$> thunksWithPath p f t
-    If             t -> If             <$> thunksWithPath p f t
-    Let          l t -> Let          l <$> thunksWithPath p f t
+  indexedThunks p f = \case
+    For          x t -> For          x <$> indexedThunks p f t
+    IndexedFor i x t -> IndexedFor i x <$> indexedThunks p f t
+    If             t -> If             <$> indexedThunks p f t
+    Let          l t -> Let          l <$> indexedThunks p f t

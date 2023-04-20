@@ -4,9 +4,9 @@ module Lang.Cue.Tokens where
 
 import "this" Prelude
 
-import Lang.Cue.HKD
+import Lang.Cue.Internal.HKD
+import Lang.Cue.Internal.NoShow
 import Lang.Cue.Location
-import Lang.Cue.NoShow
 
 
 --------------------------------------------------------------------------------

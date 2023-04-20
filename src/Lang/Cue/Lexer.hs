@@ -13,7 +13,7 @@ import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as L
 
 import Lang.Cue.Error
-import Lang.Cue.HKD
+import Lang.Cue.Internal.HKD
 import Lang.Cue.Location          hiding (getOffset)
 import Lang.Cue.Tokens
 

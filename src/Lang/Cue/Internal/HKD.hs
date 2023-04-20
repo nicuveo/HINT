@@ -1,7 +1,7 @@
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
-module Lang.Cue.HKD where
+module Lang.Cue.Internal.HKD where
 
 import "this" Prelude
 

@@ -34,6 +34,7 @@ ghc-options:
   - -foptimal-applicative-do
 
 default-extensions:
+  - Haskell2010
   - AllowAmbiguousTypes
   - ApplicativeDo
   - BangPatterns

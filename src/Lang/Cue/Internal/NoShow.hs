@@ -1,4 +1,4 @@
-module Lang.Cue.NoShow where
+module Lang.Cue.Internal.NoShow where
 
 import "this" Prelude
 
