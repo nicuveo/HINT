@@ -181,6 +181,8 @@ inlineAliases = itransformM go Empty
       foldM (inlineBlockAlias absolutePath) updatedBlock $ M.keys _biAliases
 
 -- | Inline a field alias, if any.
+--
+-- This function also removes the mention of the alias from the IR altogether.
 inlineFieldAlias :: Path -> Field -> Field
 inlineFieldAlias path f = case fieldAlias f of
   Nothing   -> f
@@ -188,25 +190,26 @@ inlineFieldAlias path f = case fieldAlias f of
     & thunks %~ inlineInThunk path name (Ref path) path
 
 -- | Given an alias appearing in a block, replace it in all other expressions.
+--
+-- This function also removes the alias from the block's definition.
 inlineBlockAlias :: Path -> BlockInfo -> FieldLabel -> Either Errors BlockInfo
 inlineBlockAlias blockPath b@BlockInfo {..} alias = do
   let
     (pathElem, thunk) = _biAliases M.! alias
     path = blockPath :|> pathElem
-    inline = inlineInThunk path alias thunk
   -- check whether it appears in its own definition
   errorOnCycle path alias thunk
   -- then delete the current alias and update all thunks
   pure $ b
     & biAliases %~ sans alias
-    & indexedThunks blockPath %@~ inline
+    & indexedThunks blockPath %@~ inlineInThunk path alias thunk
 
 inlineInThunk :: Path -> FieldLabel -> Thunk -> Path -> Thunk -> Thunk
 inlineInThunk varPath name new = itransform go
   where
     go l = \case
       Alias p n | varPath == p, name == n -> substitutePaths p l new
-      t                                   -> t
+      t -> t
 
 errorOnCycle :: Path -> FieldLabel -> Thunk -> Either Errors ()
 errorOnCycle path name = void . transformM \case
