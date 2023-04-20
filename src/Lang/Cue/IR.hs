@@ -4,11 +4,13 @@ module Lang.Cue.IR where
 
 import                "this" Prelude
 
-import                Control.Lens      hiding (List)
+import                Control.Lens        hiding (List)
+import                Data.HashMap.Strict qualified as M
+import                Data.Sequence
 
-import                Lang.Cue.AST      qualified as A
-import {-# SOURCE #-} Lang.Cue.Document qualified as D
-import                Lang.Cue.Tokens   qualified as T
+import                Lang.Cue.AST        qualified as A
+import {-# SOURCE #-} Lang.Cue.Document   qualified as D
+import                Lang.Cue.Tokens     qualified as T
 
 
 --------------------------------------------------------------------------------
@@ -75,7 +77,7 @@ data Thunk
   | Type      Type
   | Func      Function
   | Ref       Reference
-  | Alias     Path Path FieldLabel
+  | Alias     Path FieldLabel
   | Leaf      Atom
   | Top
   | Bottom
@@ -103,9 +105,8 @@ type Unification = Seq Thunk
 -- * Block
 
 data BlockInfo = BlockInfo
-  { _biAbsolutePath :: Path
-  , _biAttributes   :: Attributes
-  , _biAliases      :: HashMap FieldLabel (Path, Thunk)
+  { _biAttributes   :: Attributes
+  , _biAliases      :: HashMap FieldLabel (PathElem, Thunk)
   , _biIdentFields  :: HashMap FieldLabel (Seq Field)
   , _biStringFields :: Seq (Thunk, Field)
   , _biEmbeddings   :: Seq Embedding
@@ -275,11 +276,14 @@ type Attributes = HashMap Text (Seq Text)
 
 
 --------------------------------------------------------------------------------
--- * Lens generation
+-- * Lenses
 --
 -- We put all TH splices at the end of the file since it avoids the drawback of
 -- haivng them closer to the relevant type, namely that it makes declaration
 -- order within the file matter (which is unpleasant).
+--
+-- Furthermore, we define a few convenience functions to implement
+-- 'Plated' on thunks, as well as a pseudo "indexed plated".
 
 makeLenses ''BlockInfo
 makePrisms ''Thunk
@@ -322,44 +326,108 @@ instance Plated Thunk where
     Type               t -> pure $ Type  t
     Func               z -> pure $ Func  z
     Ref                r -> pure $ Ref   r
-    Alias          l p n -> pure $ Alias l p n
+    Alias            p n -> pure $ Alias p n
     Leaf               a -> pure $ Leaf  a
     Top                  -> pure Top
     Bottom               -> pure Bottom
 
+instance Plated (Path, Thunk) where
+  plate fi (path, token) = fmap (path,) $ case token of
+    Disjunction        d -> Disjunction        <$> (traverse . _2) f d
+    Unification        u -> Unification        <$> traverse f u
+    LogicalOr      t1 t2 -> LogicalOr          <$> f t1 <*> f t2
+    LogicalAnd     t1 t2 -> LogicalAnd         <$> f t1 <*> f t2
+    Equal          t1 t2 -> Equal              <$> f t1 <*> f t2
+    NotEqual       t1 t2 -> NotEqual           <$> f t1 <*> f t2
+    Match          t1 t2 -> Match              <$> f t1 <*> f t2
+    NotMatch       t1 t2 -> NotMatch           <$> f t1 <*> f t2
+    LessThan       t1 t2 -> LessThan           <$> f t1 <*> f t2
+    LessOrEqual    t1 t2 -> LessOrEqual        <$> f t1 <*> f t2
+    GreaterThan    t1 t2 -> GreaterThan        <$> f t1 <*> f t2
+    GreaterOrEqual t1 t2 -> GreaterOrEqual     <$> f t1 <*> f t2
+    Addition       t1 t2 -> Addition           <$> f t1 <*> f t2
+    Subtraction    t1 t2 -> Subtraction        <$> f t1 <*> f t2
+    Multiplication t1 t2 -> Multiplication     <$> f t1 <*> f t2
+    Division       t1 t2 -> Division           <$> f t1 <*> f t2
+    NumId              t -> NumId              <$> f t
+    Negate             t -> Negate             <$> f t
+    LogicalNot         t -> LogicalNot         <$> f t
+    IsNotEqualTo       t -> IsNotEqualTo       <$> f t
+    Matches            t -> Matches            <$> f t
+    Doesn'tMatch       t -> Doesn'tMatch       <$> f t
+    IsLessThan         t -> IsLessThan         <$> f t
+    IsLessOrEqualTo    t -> IsLessOrEqualTo    <$> f t
+    IsGreaterThan      t -> IsGreaterThan      <$> f t
+    IsGreaterOrEqualTo t -> IsGreaterOrEqualTo <$> f t
+    Select         t   l -> Select             <$> f t <*> pure l
+    Index          t   i -> Index              <$> f t <*> f i
+    Slice          t i j -> Slice              <$> f t <*> f i <*> f j
+    Call           t   a -> Call               <$> f t <*> traverse f a
+    Interpolation    i l -> Interpolation i    <$> traverse f l
+    List               l -> List               <$> thunksWithPath path fi l
+    Block              b -> Block              <$> thunksWithPath path fi b
+    Type               t -> pure $ Type  t
+    Func               z -> pure $ Func  z
+    Ref                r -> pure $ Ref   r
+    Alias            p n -> pure $ Alias p n
+    Leaf               a -> pure $ Leaf  a
+    Top                  -> pure Top
+    Bottom               -> pure Bottom
+    where
+      f = fmap snd . fi . (path,)
+
 class HasThunks a where
   thunks :: Traversal' a Thunk
+  thunksWithPath :: Path -> Traversal' a (Path, Thunk)
 
 instance HasThunks Thunk where
   thunks = id
+  thunksWithPath path fi t = snd <$> fi (path, t)
 
 instance HasThunks a => HasThunks [a] where
   thunks = traverse . thunks
+  thunksWithPath p = traverse . thunksWithPath p
 
 instance HasThunks a => HasThunks (Seq a) where
   thunks = traverse . thunks
+  thunksWithPath p = traverse . thunksWithPath p
 
 instance HasThunks a => HasThunks (Maybe a) where
   thunks = traverse . thunks
+  thunksWithPath p = traverse . thunksWithPath p
 
 instance HasThunks a => HasThunks (NonEmpty a) where
   thunks = traverse . thunks
+  thunksWithPath p = traverse . thunksWithPath p
 
 instance HasThunks a => HasThunks (HashMap k a) where
   thunks = traverse . thunks
+  thunksWithPath p = traverse . thunksWithPath p
 
 instance (HasThunks a, HasThunks b) => HasThunks (a, b) where
   thunks = beside thunks thunks
+  thunksWithPath p = traverse . thunksWithPath p
 
 instance HasThunks BlockInfo where
   thunks f BlockInfo {..} = BlockInfo
-    <$> pure _biAbsolutePath
-    <*> pure _biAttributes
+    <$> pure _biAttributes
     <*> (traverse . traverse) f _biAliases
     <*> thunks f _biIdentFields
     <*> thunks f _biStringFields
     <*> thunks f _biEmbeddings
     <*> thunks f _biConstraints
+    <*> pure _biClosed
+  thunksWithPath p f BlockInfo {..} = BlockInfo
+    <$> pure _biAttributes
+    <*> traverse
+        (\(e, t) -> (e,) <$> thunksWithPath (p :|> e) f t)
+        _biAliases
+    <*> M.traverseWithKey
+        (\l t -> thunksWithPath (p :|> PathField l) f t)
+        _biIdentFields
+    <*> thunksWithPath (p :|> PathStringField) f _biStringFields
+    <*> thunksWithPath p f _biEmbeddings
+    <*> thunksWithPath (p :|> PathConstraint) f _biConstraints
     <*> pure _biClosed
 
 instance HasThunks Field where
@@ -368,11 +436,19 @@ instance HasThunks Field where
     <*> f fieldValue
     <*> pure fieldOptional
     <*> pure fieldAttributes
+  thunksWithPath p f Field {..} = Field
+    <$> pure fieldAlias
+    <*> thunksWithPath p f fieldValue
+    <*> pure fieldOptional
+    <*> pure fieldAttributes
 
 instance HasThunks ListInfo where
   thunks f ListInfo {..} = ListInfo
     <$> thunks f listElements
     <*> thunks f listConstraint
+  thunksWithPath p f ListInfo {..} = ListInfo
+    <$> thunksWithPath p f listElements
+    <*> thunksWithPath p f listConstraint
 
 instance HasThunks Embedding where
   thunks f = \case
@@ -381,6 +457,12 @@ instance HasThunks Embedding where
     Comprehension c b -> Comprehension
       <$> thunks f c
       <*> thunks f b
+  thunksWithPath p f = \case
+    InlineThunk t -> InlineThunk
+      <$> thunksWithPath p f t
+    Comprehension c b -> Comprehension
+      <$> thunksWithPath p f c
+      <*> thunksWithPath p f b
 
 instance HasThunks Clause where
   thunks f = \case
@@ -388,3 +470,8 @@ instance HasThunks Clause where
     IndexedFor i x t -> IndexedFor i x <$> f t
     If             t -> If             <$> f t
     Let          l t -> Let          l <$> f t
+  thunksWithPath p f = \case
+    For          x t -> For          x <$> thunksWithPath p f t
+    IndexedFor i x t -> IndexedFor i x <$> thunksWithPath p f t
+    If             t -> If             <$> thunksWithPath p f t
+    Let          l t -> Let          l <$> thunksWithPath p f t

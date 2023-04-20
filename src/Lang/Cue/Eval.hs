@@ -72,20 +72,16 @@ substitutePaths
   -> Path -- ^ new path
   -> Thunk
   -> Thunk
-substitutePaths old new = transform
-  $ over (_Block . biAbsolutePath) (modifyPath True)
-  . over (_Alias . _1) (modifyPath True)
-  . over _Ref (modifyPath False)
+substitutePaths old new = transform $ _Ref %~ modifyPath
   where
-    modifyPath subOnEmpty path = sub subOnEmpty path (old, path)
-    sub subOnEmpty p = \case
+    modifyPath path = sub path (old, path)
+    sub p = \case
       -- end cases
-      (Empty, Empty ) -> if subOnEmpty then new else p
-      (Empty, suffix) -> new <> suffix
       (_,     Empty ) -> p
+      (Empty, suffix) -> new <> suffix
       -- compare pair-wise
       (f1 :<| fs1, f2 :<| fs2)
-        | f1 == f2  -> sub subOnEmpty p (fs1, fs2)
+        | f1 == f2  -> sub p (fs1, fs2)
         | otherwise -> p
 
 
@@ -147,38 +143,41 @@ substitutePaths old new = transform
 -- replaces all downstrean uses of that alias. WARNING: this is probably
 -- exponential? can we do better by maintaining a context manually?
 inlineAliases :: Thunk -> Either Errors Thunk
-inlineAliases = transformM $ _Block \(b@BlockInfo {..}) -> do
-  let
-    updatedBlock = b
-      & biIdentFields  . traverse . traverse %~ inlineFieldAlias _biAbsolutePath
-      & biStringFields . traverse . traverse %~ inlineFieldAlias _biAbsolutePath
-  foldM inlineBlockAlias updatedBlock $ M.keys _biAliases
+inlineAliases = fmap snd . transformM go . (Empty,)
+  where
+    go t@(absolutePath, _) = t & (_2 . _Block) \b@BlockInfo {..} -> do
+      let
+        updatedBlock = b
+          & biIdentFields  . traverse . traverse %~ inlineFieldAlias absolutePath
+          & biStringFields . traverse . traverse %~ inlineFieldAlias absolutePath
+      foldM (inlineBlockAlias absolutePath) updatedBlock $ M.keys _biAliases
 
 -- | Inline a field alias, if any.
 inlineFieldAlias :: Path -> Field -> Field
 inlineFieldAlias path f = case fieldAlias f of
   Nothing   -> f
-  Just name -> f & thunks %~ inlineInThunk path name (fieldValue f)
+  Just name -> f & thunksWithPath path %~ inlineInThunk path name (fieldValue f)
 
 -- | Given an alias appearing in a block, replace it in all other expressions.
-inlineBlockAlias :: BlockInfo -> FieldLabel -> Either Errors BlockInfo
-inlineBlockAlias b@BlockInfo {..} alias = do
+inlineBlockAlias :: Path -> BlockInfo -> FieldLabel -> Either Errors BlockInfo
+inlineBlockAlias blockPath b@BlockInfo {..} alias = do
   let
-    (path, thunk) = _biAliases M.! alias
+    (pathElem, thunk) = _biAliases M.! alias
+    path = blockPath :|> pathElem
     inline = inlineInThunk path alias thunk
   -- check whether it appears in its own definition
   errorOnCycle path alias thunk
   -- then delete the current alias and update all thunks
   pure $ b
     & biAliases %~ sans alias
-    & thunks %~ inline
+    & thunksWithPath blockPath %~ inline
 
-inlineInThunk :: Path -> FieldLabel -> Thunk -> Thunk -> Thunk
-inlineInThunk path name new = transform \case
-  Alias l p n | path == p, name == n -> substitutePaths p l new
-  t -> t
+inlineInThunk :: Path -> FieldLabel -> Thunk -> (Path, Thunk) -> (Path, Thunk)
+inlineInThunk path name new = transform \(l, t) -> case t of
+  Alias p n | path == p, name == n -> (l, substitutePaths p l new)
+  _                                -> (l, t)
 
 errorOnCycle :: Path -> FieldLabel -> Thunk -> Either Errors ()
 errorOnCycle path name = void . transformM \case
-  Alias _ p n | path == p, name == n -> Left (error "cycle!!!")
+  Alias p n | path == p, name == n -> Left (error "cycle!!!")
   t -> Right t

@@ -193,12 +193,11 @@ resolve name = go
 
 resolveAlias :: Identifier -> Translation (Maybe Thunk)
 resolveAlias name = do
-  current <- use currentPath
   label <- translateIdentifier name
   uses visibleAliases (M.lookup label) >>=
     traverse \(fst . NE.head -> parentPath) -> do
       useAlias label
-      pure $ Alias current parentPath label
+      pure $ Alias parentPath label
 
 resolveField :: Identifier -> Translation (Maybe Thunk)
 resolveField name = do
@@ -242,8 +241,7 @@ translateBlock :: [Declaration] -> Translation BlockInfo
 translateBlock decls = do
   scope <- get
   let startBlock = BlockInfo
-        { _biAbsolutePath = _currentPath scope
-        , _biAttributes   = M.empty
+        { _biAttributes   = M.empty
         , _biAliases      = M.empty
         , _biIdentFields  = M.empty
         , _biStringFields = Seq.empty
@@ -311,7 +309,7 @@ translateDeclaration scope (fields, aliases, builder) = \case
           pushAliasWith wasUsed (fieldLabel, path)
           pure result
         pure $ block
-          & biAliases . at fieldLabel ?~ (aliasPath, thunk)
+          & biAliases . at fieldLabel ?~ (pathItem, thunk)
     pure (fields, newAliases, newBuilder)
 
   -- Embedding
@@ -393,7 +391,7 @@ translateDeclaration scope (fields, aliases, builder) = \case
               addField = biStringFields %~ (:|> (nameThunk, field))
               -- warning: we treat the alias as if it were an inlined copy of the
               -- field, instead of making an absolute reference to it
-              addAlias = maybe id (\a -> biAliases %~ M.insert a (aliasPath, thunk)) fAlias
+              addAlias = maybe id (\a -> biAliases %~ M.insert a (pathItem, thunk)) fAlias
             pure $ block & addField & addAlias
         pure (fields, newAliases, newBuilder)
 
@@ -457,7 +455,7 @@ translateDeclaration scope (fields, aliases, builder) = \case
                 }
               aThunk = Ref $ cpath :|> PathField fieldName
               addField = biIdentFields %~ M.insertWith (flip (<>)) fieldName (pure field)
-              addAlias = maybe id (\a -> biAliases %~ M.insert a (aliasPath, aThunk)) fAlias
+              addAlias = maybe id (\a -> biAliases %~ M.insert a (pathItem, aThunk)) fAlias
             pure $ block & addField & addAlias
         pure (newFields, newAliases, newBuilder)
 
