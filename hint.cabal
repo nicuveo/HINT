@@ -94,6 +94,7 @@ library
     , monad-validate
     , mtl
     , parser-combinators
+    , scientific
     , text
     , transformers
     , unordered-containers
@@ -179,6 +180,7 @@ executable evalexpr
     , mtl
     , parser-combinators
     , pretty-simple
+    , scientific
     , text
     , transformers
     , unordered-containers
@@ -261,6 +263,7 @@ test-suite tests
     , monad-validate
     , mtl
     , parser-combinators
+    , scientific
     , tasty
     , tasty-hunit
     , tasty-quickcheck

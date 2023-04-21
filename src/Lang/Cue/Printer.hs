@@ -10,6 +10,7 @@ import "this" Prelude
 -- import Data.List              (intersperse)
 -- import Data.List              qualified as L
 -- import Data.List.NonEmpty     qualified as NE
+-- import Data.Scientific
 import Data.Text              qualified as T
 import Data.Text.Lazy         (toStrict)
 import Data.Text.Lazy         qualified as TL
@@ -46,7 +47,7 @@ instance Printer Builder where
 instance Printer Integer where
   build _ = fromString . show
 
-instance Printer Double where
+instance Printer Scientific where
   build _ = fromString . show
 
 instance Printer Bool where

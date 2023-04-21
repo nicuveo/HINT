@@ -11,6 +11,7 @@ module Lang.Cue.Parser
 import "this" Prelude
 
 import Control.Applicative.Combinators
+import Data.Scientific
 import Data.Text                       qualified as T
 import Text.Earley                     hiding (Grammar, Parser, rule)
 import Text.Earley                     qualified as E
@@ -474,7 +475,7 @@ integerLiteral = named "integer literal" $ terminal \case
   TokenInteger (discardLocation -> i) -> Just i
   _ -> Nothing
 
-floatLiteral :: Parser r Double
+floatLiteral :: Parser r Scientific
 floatLiteral = named "float literal" $ terminal \case
   TokenFloat (discardLocation -> d) -> Just d
   _ -> Nothing

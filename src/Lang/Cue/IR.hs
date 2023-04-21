@@ -6,6 +6,7 @@ import                "this" Prelude
 
 import                Control.Lens                    hiding (List)
 import                Data.HashMap.Strict             qualified as M
+import                Data.Scientific
 import                Data.Sequence
 
 import                Lang.Cue.AST                    qualified as A
@@ -161,7 +162,7 @@ data ListInfo = ListInfo
 data Atom
   = Boolean Bool
   | Integer Integer
-  | Float   Double
+  | Float   Scientific
   | String  Text
   | Bytes   Text
   | Null

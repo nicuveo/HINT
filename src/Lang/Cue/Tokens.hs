@@ -4,6 +4,8 @@ module Lang.Cue.Tokens where
 
 import "this" Prelude
 
+import Data.Scientific
+
 import Lang.Cue.Internal.HKD
 import Lang.Cue.Internal.NoShow
 import Lang.Cue.Location
@@ -19,7 +21,7 @@ data Token f
   | TokenAttribute              (HKD f Attribute)
   | TokenString                 (HKD f (TextInfo, Text))
   | TokenInteger                (HKD f Integer)
-  | TokenFloat                  (HKD f Double)
+  | TokenFloat                  (HKD f Scientific)
   | TokenInterpolationBegin     (HKD f TextInfo)
   | TokenInterpolationEnd       (HKD f TextInfo)
   | TokenInterpolationExprBegin (HKD f TextInfo)
@@ -33,7 +35,7 @@ instance FFunctor Token where
     TokenAttribute              x -> TokenAttribute              (ffapply @Attribute        f x)
     TokenString                 x -> TokenString                 (ffapply @(TextInfo, Text) f x)
     TokenInteger                x -> TokenInteger                (ffapply @Integer          f x)
-    TokenFloat                  x -> TokenFloat                  (ffapply @Double           f x)
+    TokenFloat                  x -> TokenFloat                  (ffapply @Scientific       f x)
     TokenInterpolationBegin     x -> TokenInterpolationBegin     (ffapply @TextInfo         f x)
     TokenInterpolationEnd       x -> TokenInterpolationEnd       (ffapply @TextInfo         f x)
     TokenInterpolationExprBegin x -> TokenInterpolationExprBegin (ffapply @TextInfo         f x)
@@ -46,7 +48,7 @@ instance
   , Show (HKD f Attribute)
   , Show (HKD f (TextInfo, Text))
   , Show (HKD f Integer)
-  , Show (HKD f Double)
+  , Show (HKD f Scientific)
   , Show (HKD f NoShow)
   , Functor f
   ) => Show (Token f) where
@@ -70,7 +72,7 @@ deriving instance
   , Eq (HKD f Attribute)
   , Eq (HKD f (TextInfo, Text))
   , Eq (HKD f Integer)
-  , Eq (HKD f Double)
+  , Eq (HKD f Scientific)
   , Eq (HKD f TextInfo)
   ) => Eq (Token f)
 
@@ -81,7 +83,7 @@ instance
   , HasOffset (HKD f Attribute)
   , HasOffset (HKD f (TextInfo, Text))
   , HasOffset (HKD f Integer)
-  , HasOffset (HKD f Double)
+  , HasOffset (HKD f Scientific)
   , HasOffset (HKD f TextInfo)
   ) => HasOffset (Token f) where
   getOffset = \case

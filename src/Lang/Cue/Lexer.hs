@@ -5,6 +5,7 @@ module Lang.Cue.Lexer (tokenize) where
 import "this" Prelude             hiding (exponent)
 
 import Data.Char
+import Data.Scientific
 import Data.Sequence              qualified as S
 import Data.Set                   ()
 import Data.Text                  qualified as T
@@ -309,7 +310,7 @@ charLiteral ti hashCount allowNewline isSingleQuotes = do
         pure $ toks <> following
 
 -- | Parses a number token, and skips subsequent space.
-numberLiteral :: Lexer (WithOffset (Either Double Integer))
+numberLiteral :: Lexer (WithOffset (Either Scientific Integer))
 numberLiteral = label "number" $ addOffset do
   res <- choice
     [ Right <$> binary
@@ -340,9 +341,9 @@ numberLiteral = label "number" $ addOffset do
       mult  <- fmap Left multiplier <|> fmap Right (optional exponent)
       case (part1, dot, part2, mult) of
         -- multiplier found: si number
-        (Just p1, Nothing, Nothing, Left m) -> pure $ Right $ round $ (read p1               :: Double) * m
-        (Just p1, Just _,  Just p2, Left m) -> pure $ Right $ round $ (read (p1 ++ '.' : p2) :: Double) * m
-        (Nothing, Just _,  Just p2, Left m) -> pure $ Right $ round $ (read ("0." <> p2)     :: Double) * m
+        (Just p1, Nothing, Nothing, Left m) -> pure $ Right $ truncate $ m * read p1
+        (Just p1, Just _,  Just p2, Left m) -> pure $ Right $ truncate $ m * read (p1 ++ '.' : p2)
+        (Nothing, Just _,  Just p2, Left m) -> pure $ Right $ truncate $ m * read ("0." <> p2)
         (_      , _,       _,       Left _) -> fail "broken si value"
         -- no multiplier: floating point
         (Just p1, Just _,       p2, Right me)       -> pure $ Left $ read $ p1 <> "." <> fromMaybe "0" p2 <> fromMaybe "" me
@@ -363,17 +364,17 @@ numberLiteral = label "number" $ addOffset do
       d <- decimals
       pure $ e : maybe "" pure s ++ d
     multiplier = do
-      r <- choice
+      r :: Int <- choice
         [ 1 <$ char 'K'
         , 2 <$ char 'M'
         , 3 <$ char 'G'
         , 4 <$ char 'T'
         , 5 <$ char 'P'
         ]
-      i <- optional (char 'i') <&> \case
+      i :: Scientific <- optional (char 'i') <&> \case
         Just _  -> 1024
         Nothing -> 1000
-      pure $ i ** r
+      pure $ i ^ r
 
 
 --------------------------------------------------------------------------------

@@ -2,6 +2,8 @@ module Lang.Cue.AST where
 
 import "this" Prelude
 
+import Data.Scientific
+
 import Lang.Cue.Tokens
 
 
@@ -130,7 +132,7 @@ data StringElement
 
 data Literal
   = IntegerLiteral Integer
-  | FloatLiteral Double
+  | FloatLiteral Scientific
   | StringLiteral TextInfo StringLiteral
   | BoolLiteral Bool
   | NullLiteral
