@@ -7,7 +7,7 @@ module Lang.Cue.Eval
 
 import "this" Prelude
 
-import Control.Lens                    hiding (Empty, List)
+import Control.Lens                    hiding (Empty, List, below)
 import Data.HashMap.Strict             qualified as M
 import Data.Sequence                   as S
 import Data.Text                       qualified as T
@@ -18,6 +18,7 @@ import Lang.Cue.Document               as D
 import Lang.Cue.Error
 import Lang.Cue.Internal.IndexedPlated
 import Lang.Cue.IR                     as I
+import Lang.Cue.Location
 
 
 --------------------------------------------------------------------------------
@@ -107,7 +108,7 @@ evalToNF t = case t of
   Type  _              -> pure $ Thunk t
   Func  _              -> pure $ Thunk t
   Top                  -> pure $ Thunk t
-  Bottom               -> error "bottom!"
+  Bottom               -> report $ BottomError ArisedFromLiteral
 
 evalOr = curry \case
   (Atom (Boolean l), Atom (Boolean r)) -> pure $ Atom $ Boolean $ l || r
@@ -179,16 +180,49 @@ evalNEq = curry \case
 
 evalRE = curry \case
   (Atom (String  s), Atom (String  p)) -> Atom . Boolean <$> reMatch s p
+  (Atom (String  s), Atom (Bytes   p)) -> Atom . Boolean <$> reMatch s p
   (l, r)                               -> typeMismatch2 "=~" l r
 
 evalNRE = curry \case
   (Atom (String  s), Atom (String  p)) -> Atom . Boolean . not <$> reMatch s p
+  (Atom (String  s), Atom (Bytes   p)) -> Atom . Boolean . not <$> reMatch s p
   (l, r)                               -> typeMismatch2 "!~" l r
 
-evalLT   = undefined
-evalLE   = undefined
-evalGT   = undefined
-evalGE   = undefined
+evalLT = curry \case
+  (Atom (Integer a), Atom (Integer b)) -> pure $ Atom $ Boolean $ a < b
+  (Atom (Integer a), Atom (Float   b)) -> pure $ Atom $ Boolean $ fromInteger a < b
+  (Atom (Float   a), Atom (Integer b)) -> pure $ Atom $ Boolean $ a < fromInteger b
+  (Atom (Float   a), Atom (Float   b)) -> pure $ Atom $ Boolean $ a < b
+  (Atom (String  a), Atom (String  b)) -> pure $ Atom $ Boolean $ a < b
+  (Atom (Bytes   a), Atom (Bytes   b)) -> pure $ Atom $ Boolean $ a < b
+  (l, r)                               -> typeMismatch2 "<" l r
+
+evalLE = curry \case
+  (Atom (Integer a), Atom (Integer b)) -> pure $ Atom $ Boolean $ a <= b
+  (Atom (Integer a), Atom (Float   b)) -> pure $ Atom $ Boolean $ fromInteger a <= b
+  (Atom (Float   a), Atom (Integer b)) -> pure $ Atom $ Boolean $ a <= fromInteger b
+  (Atom (Float   a), Atom (Float   b)) -> pure $ Atom $ Boolean $ a <= b
+  (Atom (String  a), Atom (String  b)) -> pure $ Atom $ Boolean $ a <= b
+  (Atom (Bytes   a), Atom (Bytes   b)) -> pure $ Atom $ Boolean $ a <= b
+  (l, r)                               -> typeMismatch2 "<=" l r
+
+evalGT = curry \case
+  (Atom (Integer a), Atom (Integer b)) -> pure $ Atom $ Boolean $ a > b
+  (Atom (Integer a), Atom (Float   b)) -> pure $ Atom $ Boolean $ fromInteger a > b
+  (Atom (Float   a), Atom (Integer b)) -> pure $ Atom $ Boolean $ a > fromInteger b
+  (Atom (Float   a), Atom (Float   b)) -> pure $ Atom $ Boolean $ a > b
+  (Atom (String  a), Atom (String  b)) -> pure $ Atom $ Boolean $ a > b
+  (Atom (Bytes   a), Atom (Bytes   b)) -> pure $ Atom $ Boolean $ a > b
+  (l, r)                               -> typeMismatch2 ">" l r
+
+evalGE = curry \case
+  (Atom (Integer a), Atom (Integer b)) -> pure $ Atom $ Boolean $ a >= b
+  (Atom (Integer a), Atom (Float   b)) -> pure $ Atom $ Boolean $ fromInteger a >= b
+  (Atom (Float   a), Atom (Integer b)) -> pure $ Atom $ Boolean $ a >= fromInteger b
+  (Atom (Float   a), Atom (Float   b)) -> pure $ Atom $ Boolean $ a >= b
+  (Atom (String  a), Atom (String  b)) -> pure $ Atom $ Boolean $ a >= b
+  (Atom (Bytes   a), Atom (Bytes   b)) -> pure $ Atom $ Boolean $ a >= b
+  (l, r)                               -> typeMismatch2 ">=" l r
 
 evalPlus t = case t of
   Atom (Integer _) -> pure t
@@ -204,29 +238,51 @@ evalNot = \case
   Atom (Boolean b) -> pure $ Atom $ Boolean $ not b
   t                -> typeMismatch "!" t
 
-evalUNE  = undefined
-evalURE  = undefined
-evalUNRE = undefined
-evalULT  = undefined
-evalULE  = undefined
-evalUGT  = undefined
-evalUGE  = undefined
+evalUNE = \case
+  Atom (Integer x) -> pure $ IntegerBound $ unbound & different %~ (x:)
+  Atom (Float   x) -> pure $ FloatBound   $ unbound & different %~ (x:)
+  Atom (String  x) -> pure $ StringBound  $ unbound & different %~ (x:)
+  Atom (Bytes   x) -> pure $ BytesBound   $ unbound & different %~ (x:)
+  Atom Null        -> pure NotNull
+  t                -> typeMismatch "!=" t
 
+evalURE = \case
+  Atom (String  p) -> pure $ StringBound  $ unbound & matchesAll %~ (p:)
+  Atom (Bytes   p) -> pure $ StringBound  $ unbound & matchesAll %~ (p:)
+  t                -> typeMismatch "=~" t
 
---------------------------------------------------------------------------------
--- * Helpers
+evalUNRE = \case
+  Atom (String  p) -> pure $ StringBound  $ unbound & matchesNone %~ (p:)
+  Atom (Bytes   p) -> pure $ StringBound  $ unbound & matchesNone %~ (p:)
+  t                -> typeMismatch "!~" t
 
-typeMismatch :: String -> Document -> Eval a
-typeMismatch = undefined
-typeMismatch2  :: String -> Document -> Document -> Eval a
-typeMismatch2 = undefined
+evalULT = \case
+  Atom (Integer x) -> pure $ IntegerBound $ unbound & below .~ Exclusive x
+  Atom (Float   x) -> pure $ FloatBound   $ unbound & below .~ Exclusive x
+  Atom (String  x) -> pure $ StringBound  $ unbound & below .~ Exclusive x
+  Atom (Bytes   x) -> pure $ BytesBound   $ unbound & below .~ Exclusive x
+  t                -> typeMismatch "<" t
 
-reMatch :: Text -> Text -> Eval Bool
-reMatch str pat = do
-  -- RE2 expects UTF-8 by default, and that's fine
-  compiled <- RE2.compile (encodeUtf8 pat)
-    `onLeft` \e -> error (RE2.errorMessage e)
-  pure $ isJust $ RE2.find compiled (encodeUtf8 str)
+evalULE = \case
+  Atom (Integer x) -> pure $ IntegerBound $ unbound & below .~ Inclusive x
+  Atom (Float   x) -> pure $ FloatBound   $ unbound & below .~ Inclusive x
+  Atom (String  x) -> pure $ StringBound  $ unbound & below .~ Inclusive x
+  Atom (Bytes   x) -> pure $ BytesBound   $ unbound & below .~ Inclusive x
+  t                -> typeMismatch "<=" t
+
+evalUGT = \case
+  Atom (Integer x) -> pure $ IntegerBound $ unbound & above .~ Exclusive x
+  Atom (Float   x) -> pure $ FloatBound   $ unbound & above .~ Exclusive x
+  Atom (String  x) -> pure $ StringBound  $ unbound & above .~ Exclusive x
+  Atom (Bytes   x) -> pure $ BytesBound   $ unbound & above .~ Exclusive x
+  t                -> typeMismatch ">" t
+
+evalUGE = \case
+  Atom (Integer x) -> pure $ IntegerBound $ unbound & above .~ Inclusive x
+  Atom (Float   x) -> pure $ FloatBound   $ unbound & above .~ Inclusive x
+  Atom (String  x) -> pure $ StringBound  $ unbound & above .~ Inclusive x
+  Atom (Bytes   x) -> pure $ BytesBound   $ unbound & above .~ Inclusive x
+  t                -> typeMismatch ">=" t
 
 
 --------------------------------------------------------------------------------
@@ -418,3 +474,23 @@ errorOnCycle :: Path -> FieldLabel -> Thunk -> Either Errors ()
 errorOnCycle path name = void . transformM \case
   Alias p n | path == p, name == n -> Left (error "cycle!!!")
   t -> Right t
+
+
+--------------------------------------------------------------------------------
+-- * Helpers
+
+report :: ErrorInfo -> Eval a
+report = throwError . pure . withLocation (Location "FIXME" [] 0)
+
+typeMismatch :: String -> Document -> Eval a
+typeMismatch = undefined
+
+typeMismatch2  :: String -> Document -> Document -> Eval a
+typeMismatch2 = undefined
+
+reMatch :: Text -> Text -> Eval Bool
+reMatch str pat = do
+  -- RE2 expects UTF-8 by default, and that's fine
+  compiled <- RE2.compile (encodeUtf8 pat)
+    `onLeft` \e -> error (RE2.errorMessage e)
+  pure $ isJust $ RE2.find compiled (encodeUtf8 str)
