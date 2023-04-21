@@ -36,7 +36,7 @@ panic p = withFrozenCallStack $ error $ pp $ case p of
 -- * User error
 
 data ErrorInfo
-  = LexerTokenError (Maybe String) [String]
+  = LexerTokenError (Maybe (Int, String)) [String]
   | LexerCustomError String
   | ParserError
   deriving (Show)
@@ -51,7 +51,7 @@ errorMessage (WithLocation (loc@Location {..}, e)) = case e of
       [ "lexer error: unexpected token"
       , "expecting one of: " <> T.intercalate ", " (T.pack . show <$> expected)
       ]
-    Just u  -> msg (length u)
+    Just (l, u) -> msg l
       [ "lexer error: unexpected token"
       , "expecting one of: " <> T.intercalate ", " (map T.pack expected)
       , "but instead found: " <> T.pack u

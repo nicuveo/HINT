@@ -6,6 +6,7 @@ import "this" Prelude             hiding (exponent)
 
 import Data.Char
 import Data.Scientific
+import Data.Semigroup             (Min (..))
 import Data.Sequence              qualified as S
 import Data.Set                   ()
 import Data.Text                  qualified as T
@@ -58,13 +59,13 @@ tokenize filename code =
       TrivialError o got want ->
         pure $
           mkLocation o $
-            LexerTokenError (fmap display got) (map display $ toList want)
+            LexerTokenError (fmap display got) (foldMap (pure . snd . display) want)
 
-    display :: ErrorItem Char -> String
+    display :: ErrorItem Char -> (Int, String)
     display = \case
-      Tokens s   -> toList s
-      Label  s   -> toList s
-      EndOfInput -> "end of input"
+      Tokens s   -> (getMin $ foldMap (Min . length . show) s, toList s)
+      Label  s   -> (getMin $ foldMap (Min . length . show) s, toList s)
+      EndOfInput -> (1, "end of input")
 
 
 --------------------------------------------------------------------------------
