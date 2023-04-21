@@ -87,6 +87,7 @@ dependencies:
   - monad-validate
   - mtl
   - parser-combinators
+  - re2
   - scientific
   - text
   - transformers

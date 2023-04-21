@@ -11,6 +11,8 @@ import Control.Lens                    hiding (Empty, List)
 import Data.HashMap.Strict             qualified as M
 import Data.Sequence                   as S
 import Data.Text                       qualified as T
+import Data.Text.Encoding              (encodeUtf8)
+import Regex.RE2                       qualified as RE2
 
 import Lang.Cue.Document               as D
 import Lang.Cue.Error
@@ -149,10 +151,40 @@ evalDiv = curry \case
   (Atom (Float   a), Atom (Float   b)) -> pure $ Atom $ Float   $             a /             b
   (l, r)                               -> typeMismatch2 "/" l r
 
-evalEq   = undefined
-evalNEq  = undefined
-evalRE   = undefined
-evalNRE  = undefined
+evalEq = curry \case
+  (Atom Null       , Atom Null       ) -> pure $ Atom $ Boolean $ True
+  (Atom _          , Atom Null       ) -> pure $ Atom $ Boolean $ False
+  (Atom Null       , Atom _          ) -> pure $ Atom $ Boolean $ False
+  (Atom (Boolean l), Atom (Boolean r)) -> pure $ Atom $ Boolean $ l == r
+  (Atom (Integer a), Atom (Integer b)) -> pure $ Atom $ Boolean $ a == b
+  (Atom (Integer a), Atom (Float   b)) -> pure $ Atom $ Boolean $ fromInteger a == b
+  (Atom (Float   a), Atom (Integer b)) -> pure $ Atom $ Boolean $ a == fromInteger b
+  (Atom (Float   a), Atom (Float   b)) -> pure $ Atom $ Boolean $ a == b
+  (Atom (String  a), Atom (String  b)) -> pure $ Atom $ Boolean $ a == b
+  (Atom (Bytes   a), Atom (Bytes   b)) -> pure $ Atom $ Boolean $ a == b
+  (l, r)                               -> typeMismatch2 "==" l r
+
+evalNEq = curry \case
+  (Atom Null       , Atom Null       ) -> pure $ Atom $ Boolean $ False
+  (Atom _          , Atom Null       ) -> pure $ Atom $ Boolean $ True
+  (Atom Null       , Atom _          ) -> pure $ Atom $ Boolean $ True
+  (Atom (Boolean l), Atom (Boolean r)) -> pure $ Atom $ Boolean $ l /= r
+  (Atom (Integer a), Atom (Integer b)) -> pure $ Atom $ Boolean $ a /= b
+  (Atom (Integer a), Atom (Float   b)) -> pure $ Atom $ Boolean $ fromInteger a /= b
+  (Atom (Float   a), Atom (Integer b)) -> pure $ Atom $ Boolean $ a /= fromInteger b
+  (Atom (Float   a), Atom (Float   b)) -> pure $ Atom $ Boolean $ a /= b
+  (Atom (String  a), Atom (String  b)) -> pure $ Atom $ Boolean $ a /= b
+  (Atom (Bytes   a), Atom (Bytes   b)) -> pure $ Atom $ Boolean $ a /= b
+  (l, r)                               -> typeMismatch2 "!=" l r
+
+evalRE = curry \case
+  (Atom (String  s), Atom (String  p)) -> Atom . Boolean <$> reMatch s p
+  (l, r)                               -> typeMismatch2 "=~" l r
+
+evalNRE = curry \case
+  (Atom (String  s), Atom (String  p)) -> Atom . Boolean . not <$> reMatch s p
+  (l, r)                               -> typeMismatch2 "!~" l r
+
 evalLT   = undefined
 evalLE   = undefined
 evalGT   = undefined
@@ -189,6 +221,12 @@ typeMismatch = undefined
 typeMismatch2  :: String -> Document -> Document -> Eval a
 typeMismatch2 = undefined
 
+reMatch :: Text -> Text -> Eval Bool
+reMatch str pat = do
+  -- RE2 expects UTF-8 by default, and that's fine
+  compiled <- RE2.compile (encodeUtf8 pat)
+    `onLeft` \e -> error (RE2.errorMessage e)
+  pure $ isJust $ RE2.find compiled (encodeUtf8 str)
 
 
 --------------------------------------------------------------------------------
