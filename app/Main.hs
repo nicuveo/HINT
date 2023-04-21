@@ -47,10 +47,14 @@ evalLine (dropWhile isSpace -> l) = case l of
       "ir"     -> display ir
       "inline" -> display $ inlineAliases =<< ir
       _        -> usage
-  _ -> putStrLn "unavailable"
+  _ -> display $ eval =<< translateExpression =<< parse expression "<interactive>" (T.pack l)
   where
     display :: Show a => Either Errors a -> IO ()
-    display = either renderErrors pPrint
+    display = either renderErrors $ pPrintOpt CheckColorTty $ defaultOutputOptionsDarkBg
+      { outputOptionsIndentAmount = 2
+      , outputOptionsPageWidth = 100
+      , outputOptionsCompactParens = True
+      }
     renderErrors = T.putStr . T.unlines . intersperse "" . map errorMessage . toList
     usage = putStrLn "\
       \:?        print this help\n\
