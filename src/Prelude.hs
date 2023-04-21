@@ -11,6 +11,9 @@ module Prelude
     -- * maybe helpers
   , onNothing
   , onNothingM
+    -- * either helpers
+  , onLeft
+  , onLeftM
     -- * nested fmaps
   , fmap2
   , (<<$>>)
@@ -81,6 +84,16 @@ onNothing a d = maybe d pure a
 
 onNothingM :: Monad m => m (Maybe a) -> m a -> m a
 onNothingM a d = a >>= flip onNothing d
+
+
+--------------------------------------------------------------------------------
+-- Either helpers
+
+onLeft :: Applicative m => Either e a -> (e -> m a) -> m a
+onLeft a f = either f pure a
+
+onLeftM :: Monad m => m (Either e a) -> (e -> m a) -> m a
+onLeftM a f = a >>= flip onLeft f
 
 
 --------------------------------------------------------------------------------
