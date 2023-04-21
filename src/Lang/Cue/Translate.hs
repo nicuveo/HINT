@@ -181,7 +181,8 @@ withScope (fields, aliases) action = do
 
 resolve :: Identifier -> Translation Thunk
 resolve name = go
-  [ resolveAlias
+  [ resolveTop
+  , resolveAlias
   , resolveField
   , resolvePackage
   , resolveBuiltin
@@ -190,6 +191,11 @@ resolve name = go
     go = \case
       (f:fs) -> f name `onNothingM` go fs
       []     -> refute (error "name not found")
+
+resolveTop :: Identifier -> Translation (Maybe Thunk)
+resolveTop = pure . \case
+  Identifier "_" -> Just Top
+  _              -> Nothing
 
 resolveAlias :: Identifier -> Translation (Maybe Thunk)
 resolveAlias name = do
@@ -230,7 +236,6 @@ resolveBuiltin = getIdentifier >>> pure. \case
 
   -- misc
   "null" -> Just $ Leaf Null
-  "_"    -> Just $ Top
   _      -> Nothing
 
 
