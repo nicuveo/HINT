@@ -73,3 +73,4 @@ a: {
   - [ ] the documented `import "math/bits:bits"` syntax doesn't seem to work?
   - [ ] the playground does not reject having multiple imports with the same alias
   - [ ] the reference claims that `len([1,2,3,...]` is `>= 3`, but the playground resolves it to `3`
+  - [ ] the playground allows "_" as an alias, but it can't be used, which always results in an error
