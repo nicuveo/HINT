@@ -65,6 +65,10 @@ fromHKD = unsafeCoerce
 hmap :: forall f a b. Functor f => (a -> b) -> HKD f a -> HKD f b
 hmap f = toHKD @f . fmap f . fromHKD @f
 
+-- | Similarly to 'hmap', this provides an equivalent to 'pure'.
+hpure :: forall f a. Applicative f => a -> HKD f a
+hpure = toHKD @f . pure
+
 type FFunction f g = forall a. f a -> g a
 
 -- | This class describes how a HKD type is kind of a "higher-kind functor": we
