@@ -33,7 +33,7 @@ itransformM
   -> i
   -> a
   -> m a
-itransformM f x = itransformMOf (\i -> indexedPlate i) f x
+itransformM = itransformMOf (\i -> indexedPlate i)
 
 itransformMOf
   :: forall m i a

@@ -148,7 +148,7 @@ popAlias l =
     -- if we reach this, it means that we tried to pop a non-existant alias
     Nothing -> unreachable
     Just (v :| r) -> do
-      visibleAliases %= flip M.update l (const $ nonEmpty r)
+      visibleAliases %= M.update (const $ nonEmpty r) l
       pure v
 
 -- | Removes the given alias from the stack and raise a non-fatal error if it
@@ -524,7 +524,7 @@ translateComprehension
   -> [Declaration]
   -> Translation I.Embedding
 translateComprehension (clause :| rest) decl =
-  fmap (fromMaybe (InlineThunk $ Leaf $ Null) . join) $
+  fmap (fromMaybe (InlineThunk $ Leaf Null) . join) $
     tolerate $ case clause of
       ComprehensionFor n e -> do
         l <- translateIdentifier n

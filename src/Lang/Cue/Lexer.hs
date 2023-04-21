@@ -42,7 +42,7 @@ tokenize filename code =
     codeLines = T.lines code
 
     mkLocation :: Int -> a -> WithLocation a
-    mkLocation o a = withLocation (Location filename codeLines o) a
+    mkLocation o = withLocation (Location filename codeLines o)
 
     annotate :: Token WithOffset -> Token WithLocation
     annotate = ffmap \(WithOffset (o, a)) -> mkLocation o a
@@ -446,7 +446,7 @@ postProcess i b e l = case foldr fuse [] l of
     fuse x r = x <> r
 
 addOffset :: Lexer a -> Lexer (WithOffset a)
-addOffset = liftA2 withOffset (getOffset)
+addOffset = liftA2 withOffset getOffset
 
 flipE :: WithOffset (Either a b) -> Either (WithOffset a) (WithOffset b)
 flipE (WithOffset (o, e)) = case e of

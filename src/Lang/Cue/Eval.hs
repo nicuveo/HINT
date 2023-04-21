@@ -153,9 +153,9 @@ evalDiv = curry \case
   (l, r)                               -> typeMismatch2 "/" l r
 
 evalEq = curry \case
-  (Atom Null       , Atom Null       ) -> pure $ Atom $ Boolean $ True
-  (Atom _          , Atom Null       ) -> pure $ Atom $ Boolean $ False
-  (Atom Null       , Atom _          ) -> pure $ Atom $ Boolean $ False
+  (Atom Null       , Atom Null       ) -> pure $ Atom $ Boolean True
+  (Atom _          , Atom Null       ) -> pure $ Atom $ Boolean False
+  (Atom Null       , Atom _          ) -> pure $ Atom $ Boolean False
   (Atom (Boolean l), Atom (Boolean r)) -> pure $ Atom $ Boolean $ l == r
   (Atom (Integer a), Atom (Integer b)) -> pure $ Atom $ Boolean $ a == b
   (Atom (Integer a), Atom (Float   b)) -> pure $ Atom $ Boolean $ fromInteger a == b
@@ -166,9 +166,9 @@ evalEq = curry \case
   (l, r)                               -> typeMismatch2 "==" l r
 
 evalNEq = curry \case
-  (Atom Null       , Atom Null       ) -> pure $ Atom $ Boolean $ False
-  (Atom _          , Atom Null       ) -> pure $ Atom $ Boolean $ True
-  (Atom Null       , Atom _          ) -> pure $ Atom $ Boolean $ True
+  (Atom Null       , Atom Null       ) -> pure $ Atom $ Boolean False
+  (Atom _          , Atom Null       ) -> pure $ Atom $ Boolean True
+  (Atom Null       , Atom _          ) -> pure $ Atom $ Boolean True
   (Atom (Boolean l), Atom (Boolean r)) -> pure $ Atom $ Boolean $ l /= r
   (Atom (Integer a), Atom (Integer b)) -> pure $ Atom $ Boolean $ a /= b
   (Atom (Integer a), Atom (Float   b)) -> pure $ Atom $ Boolean $ fromInteger a /= b

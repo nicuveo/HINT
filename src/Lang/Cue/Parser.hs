@@ -51,7 +51,7 @@ parse grammar filename code = do
     codeLines = T.lines code
 
     mkLocation :: Int -> a -> WithLocation a
-    mkLocation o a = withLocation (Location filename codeLines o) a
+    mkLocation o = withLocation (Location filename codeLines o)
 
 
 --------------------------------------------------------------------------------
