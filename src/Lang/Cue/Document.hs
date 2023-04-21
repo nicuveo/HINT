@@ -1,10 +1,14 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell      #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Lang.Cue.Document where
 
 import "this" Prelude
 
-import Lang.Cue.IR    qualified as I
+import Control.Lens          hiding (List)
+
+import Lang.Cue.Internal.HKD
+import Lang.Cue.IR           qualified as I
 
 
 --------------------------------------------------------------------------------
@@ -20,11 +24,11 @@ import Lang.Cue.IR    qualified as I
 --
 -- Bottom is not represented as part of the document, since bottom represents
 -- (recoverable) evaluation errors.
-data Document
+data Document' f
   -- structure
   = Atom         I.Atom
-  | List         [Document]
-  | Struct       StructInfo
+  | List         [HKD f (Document' f)]
+  | Struct       (StructInfo' f)
   -- constraints
   | NotNull
   | BoolBound    BoolBound
@@ -34,8 +38,25 @@ data Document
   | BytesBound   BytesBound
   -- unevaluated
   | Thunk        I.Thunk
-  deriving (Show, Eq)
 
+type Document = Document' Identity
+
+deriving instance Show (HKD f (Document' f)) => Show (Document' f)
+deriving instance Eq   (HKD f (Document' f)) => Eq   (Document' f)
+
+instance FFunctor Document' where
+  ffmap :: forall f g. (HKDF f, HKDF g) => FFunction f g -> Document' f -> Document' g
+  ffmap f = \case
+    NotNull        -> NotNull
+    Atom         x -> Atom         x
+    BoolBound    x -> BoolBound    x
+    IntegerBound x -> IntegerBound x
+    FloatBound   x -> FloatBound   x
+    StringBound  x -> StringBound  x
+    BytesBound   x -> BytesBound   x
+    Thunk        x -> Thunk        x
+    List         l -> List   $ map (ffrecur @Document' f) l
+    Struct       s -> Struct $ ffmap f s
 
 --------------------------------------------------------------------------------
 -- * Bounds
@@ -81,12 +102,72 @@ data EndPoint o
 --------------------------------------------------------------------------------
 -- * Struct
 
-data StructInfo = StructInfo
-  { structFields     :: HashMap Text Field
+data StructInfo' f = StructInfo
+  { structFields     :: HashMap Text (Field' f)
   , structAttributes :: I.Attributes
-  } deriving (Show, Eq)
+  }
 
-data Field = Field
-  { fieldValue      :: Document
+type StructInfo = StructInfo' Identity
+
+deriving instance Show (HKD f (Document' f)) => Show (StructInfo' f)
+deriving instance Eq   (HKD f (Document' f)) => Eq   (StructInfo' f)
+
+instance FFunctor StructInfo' where
+  ffmap f StructInfo {..} =
+    StructInfo (fmap (ffmap f) structFields) structAttributes
+
+
+data Field' f = Field
+  { fieldValue      :: HKD f (Document' f)
   , fieldAttributes :: I.Attributes
-  } deriving (Show, Eq)
+  }
+
+type Field = Field' Identity
+
+deriving instance Show (HKD f (Document' f)) => Show (Field' f)
+deriving instance Eq   (HKD f (Document' f)) => Eq   (Field' f)
+
+instance FFunctor Field' where
+  ffmap f Field {..} =
+    Field (ffrecur @Document' f fieldValue) fieldAttributes
+
+
+--------------------------------------------------------------------------------
+-- * Lenses
+
+makePrisms ''Document'
+
+instance HasDocs (HKD f (Document' f)) f => Plated (Document' f) where
+  plate f = \case
+    NotNull        -> pure NotNull
+    Atom         x -> pure $ Atom         x
+    BoolBound    x -> pure $ BoolBound    x
+    IntegerBound x -> pure $ IntegerBound x
+    FloatBound   x -> pure $ FloatBound   x
+    StringBound  x -> pure $ StringBound  x
+    BytesBound   x -> pure $ BytesBound   x
+    Thunk        x -> pure $ Thunk        x
+    List         l -> List   <$> documents f l
+    Struct       s -> Struct <$> documents f s
+
+class HasDocs a f | a -> f where
+  documents :: Traversal' a (Document' f)
+  default documents :: (a ~ t x, Traversable t, HasDocs x f) => Traversal' a (Document' f)
+  documents = traverse . documents
+
+instance HasDocs (Document' f) f where
+  documents = id
+
+instance HasDocs a f => HasDocs [a] f
+
+instance HasDocs a f => HasDocs (HashMap k a) f where
+
+instance HasDocs (HKD f (Document' f)) f => HasDocs (StructInfo' f) f where
+  documents f (StructInfo fs as) = StructInfo
+    <$> documents f fs
+    <*> pure as
+
+instance HasDocs (HKD f (Document' f)) f => HasDocs (Field' f) f where
+  documents f (Field fv as) = Field
+    <$> documents f fv
+    <*> pure as
