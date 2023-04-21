@@ -6,6 +6,7 @@ module Lang.Cue.Document where
 import "this" Prelude
 
 import Control.Lens          hiding (List)
+import Data.Scientific
 
 import Lang.Cue.Internal.HKD
 import Lang.Cue.IR           qualified as I
@@ -31,7 +32,6 @@ data Document' f
   | Struct       (StructInfo' f)
   -- constraints
   | NotNull
-  | BoolBound    BoolBound
   | IntegerBound IntegerBound
   | FloatBound   FloatBound
   | StringBound  StringBound
@@ -48,7 +48,6 @@ instance FFunctor Document' where
   ffmap f = \case
     NotNull        -> NotNull
     Atom         x -> Atom         x
-    BoolBound    x -> BoolBound    x
     IntegerBound x -> IntegerBound x
     FloatBound   x -> FloatBound   x
     StringBound  x -> StringBound  x
@@ -73,26 +72,25 @@ instance FFunctor Document' where
 --   * @r@ is the type of values in the Regex clauses
 data Bound e o r = Bound
   { -- | lower bound (if any)
-    minBound    :: EndPoint o
+    _above       :: EndPoint o
   , -- | upper bound (if any)
-    maxBound    :: EndPoint o
+    _below       :: EndPoint o
   , -- | excluded values
-    different   :: [e]
+    _different   :: [e]
   , -- | regex match
-    matchesAll  :: [r]
+    _matchesAll  :: [r]
   , -- | regex non-match
-    matchesNone :: [r]
+    _matchesNone :: [r]
   }
   deriving (Show, Eq)
 
 unbound :: Bound e o r
 unbound = Bound Open Open [] [] []
 
-type BoolBound    = Bound Bool    Void    Void
-type IntegerBound = Bound Integer Integer Void
-type FloatBound   = Bound Float   Float   Void
-type StringBound  = Bound Text    Text    Text
-type BytesBound   = Bound Text    Text    Void
+type IntegerBound = Bound Integer    Integer    Void
+type FloatBound   = Bound Scientific Scientific Void
+type StringBound  = Bound Text       Text       Text
+type BytesBound   = Bound Text       Text       Void
 
 -- | Bound for an ordered value.
 data EndPoint o
@@ -138,13 +136,14 @@ instance FFunctor Field' where
 --------------------------------------------------------------------------------
 -- * Lenses
 
+makeLenses ''Bound
 makePrisms ''Document'
+makePrisms ''EndPoint
 
 instance HasDocs (HKD f (Document' f)) f => Plated (Document' f) where
   plate f = \case
     NotNull        -> pure NotNull
     Atom         x -> pure $ Atom         x
-    BoolBound    x -> pure $ BoolBound    x
     IntegerBound x -> pure $ IntegerBound x
     FloatBound   x -> pure $ FloatBound   x
     StringBound  x -> pure $ StringBound  x
