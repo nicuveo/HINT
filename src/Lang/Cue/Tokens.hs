@@ -27,17 +27,17 @@ data Token f
 
 instance FFunctor Token where
   ffmap f = \case
-    TokenIdentifier             x -> TokenIdentifier             (f @Identifier       x)
-    TokenKeyword                x -> TokenKeyword                (f @Keyword          x)
-    TokenOperator               x -> TokenOperator               (f @Operator         x)
-    TokenAttribute              x -> TokenAttribute              (f @Attribute        x)
-    TokenString                 x -> TokenString                 (f @(TextInfo, Text) x)
-    TokenInteger                x -> TokenInteger                (f @Integer          x)
-    TokenFloat                  x -> TokenFloat                  (f @Double           x)
-    TokenInterpolationBegin     x -> TokenInterpolationBegin     (f @TextInfo         x)
-    TokenInterpolationEnd       x -> TokenInterpolationEnd       (f @TextInfo         x)
-    TokenInterpolationExprBegin x -> TokenInterpolationExprBegin (f @TextInfo         x)
-    TokenInterpolationExprEnd   x -> TokenInterpolationExprEnd   (f @TextInfo         x)
+    TokenIdentifier             x -> TokenIdentifier             (ffapply @Identifier       f x)
+    TokenKeyword                x -> TokenKeyword                (ffapply @Keyword          f x)
+    TokenOperator               x -> TokenOperator               (ffapply @Operator         f x)
+    TokenAttribute              x -> TokenAttribute              (ffapply @Attribute        f x)
+    TokenString                 x -> TokenString                 (ffapply @(TextInfo, Text) f x)
+    TokenInteger                x -> TokenInteger                (ffapply @Integer          f x)
+    TokenFloat                  x -> TokenFloat                  (ffapply @Double           f x)
+    TokenInterpolationBegin     x -> TokenInterpolationBegin     (ffapply @TextInfo         f x)
+    TokenInterpolationEnd       x -> TokenInterpolationEnd       (ffapply @TextInfo         f x)
+    TokenInterpolationExprBegin x -> TokenInterpolationExprBegin (ffapply @TextInfo         f x)
+    TokenInterpolationExprEnd   x -> TokenInterpolationExprEnd   (ffapply @TextInfo         f x)
 
 instance
   ( Show (HKD f Identifier)

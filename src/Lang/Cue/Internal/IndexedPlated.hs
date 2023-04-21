@@ -27,15 +27,17 @@ itransformOf l f = go where
   go i = f i . iover (l i) go
 
 itransformM
-  :: (Monad m, IndexedPlated i a)
+  :: forall m i a
+   . (Monad m, IndexedPlated i a)
   => (i -> a -> m a)
   -> i
   -> a
   -> m a
-itransformM = itransformMOf indexedPlate
+itransformM f x = itransformMOf (\i -> indexedPlate i) f x
 
 itransformMOf
-  :: (Monad m)
+  :: forall m i a
+   . (Monad m)
   => (i -> IndexedLensLike i (WrappedMonad m) a a a a)
   -> (i -> a -> m a)
   -> i

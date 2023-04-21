@@ -11,6 +11,8 @@ extra-source-files:
 
 description:         Please see the README on GitHub at <https://github.com/nicuveo/HINT#readme>
 
+language: GHC2021
+
 ghc-options:
   - -Wcompat
   - -Werror
@@ -34,7 +36,6 @@ ghc-options:
   - -foptimal-applicative-do
 
 default-extensions:
-  - Haskell2010
   - AllowAmbiguousTypes
   - ApplicativeDo
   - BangPatterns
