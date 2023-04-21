@@ -48,7 +48,7 @@ instance
   , Show (HKD f Integer)
   , Show (HKD f Double)
   , Show (HKD f NoShow)
-  , HKDF f
+  , Functor f
   ) => Show (Token f) where
   show = \case
     TokenIdentifier             i -> show i

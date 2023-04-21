@@ -45,7 +45,6 @@ deriving instance Show (HKD f (Document' f)) => Show (Document' f)
 deriving instance Eq   (HKD f (Document' f)) => Eq   (Document' f)
 
 instance FFunctor Document' where
-  ffmap :: forall f g. (HKDF f, HKDF g) => FFunction f g -> Document' f -> Document' g
   ffmap f = \case
     NotNull        -> NotNull
     Atom         x -> Atom         x
@@ -57,6 +56,7 @@ instance FFunctor Document' where
     Thunk        x -> Thunk        x
     List         l -> List   $ map (ffrecur @Document' f) l
     Struct       s -> Struct $ ffmap f s
+
 
 --------------------------------------------------------------------------------
 -- * Bounds
