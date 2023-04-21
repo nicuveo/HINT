@@ -166,7 +166,16 @@ data Atom
   | String  Text
   | Bytes   Text
   | Null
-  deriving (Show, Eq)
+  deriving (Eq)
+
+instance Show Atom where
+  show = \case
+    Boolean x -> show x
+    Integer x -> show x
+    Float   x -> show x
+    String  x -> show x
+    Bytes   x -> show x
+    Null      -> "Null"
 
 
 --------------------------------------------------------------------------------
