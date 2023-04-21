@@ -39,6 +39,11 @@ data ErrorInfo
   = LexerTokenError (Maybe (Int, String)) [String]
   | LexerCustomError String
   | ParserError
+  | BottomError BottomSource
+  deriving (Show)
+
+data BottomSource
+  = ArisedFromLiteral
   deriving (Show)
 
 type Error  = WithLocation ErrorInfo
@@ -58,6 +63,7 @@ errorMessage (WithLocation (loc@Location {..}, e)) = case e of
       ]
   LexerCustomError err -> msg 1 ["lexer error", T.pack err]
   ParserError -> msg 1 ["parse error"]
+  BottomError b -> T.pack $ "_|_: " ++ show b -- FIXME
   where
     (row, col) = findPos loc
     currentLine = locCode !! (row-1)
