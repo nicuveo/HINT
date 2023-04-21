@@ -71,13 +71,19 @@ tokenize filename code =
 --------------------------------------------------------------------------------
 -- * Tokens
 
+-- | Try all tokens in order.
+--
+-- We attempt strings first, to make sure we don't mistake the # delimiters for
+-- identifiers. We then attempt numbers before operators, to match ".3" as a
+-- float, and not as @[".", "3"]@. We likewise do operators before identifiers
+-- to make sure that "_|_" doesn't get lexed as @["_", "|", "_"]@.
 token :: Lexer [Token WithOffset]
 token = label "token" $ choice
-  [ try stringLiteral
-  , pure . either TokenKeyword TokenIdentifier . flipE <$> identifierOrKeyword
-  , pure . either TokenFloat TokenInteger      . flipE <$> numberLiteral
-  , pure . TokenAttribute <$> attribute
+  [ stringLiteral
+  , pure . either TokenFloat TokenInteger . flipE <$> numberLiteral
   , pure . TokenOperator <$> operator
+  , pure . TokenAttribute <$> attribute
+  , pure . either TokenKeyword TokenIdentifier . flipE <$> identifierOrKeyword
   , fail "did not find a valid token"
   ]
 
@@ -179,53 +185,58 @@ identifierOrKeyword = addOffset do
 
 stringLiteral :: Lexer [Token WithOffset]
 stringLiteral = do
-  hashCount <- length <$> many (char '#')
   res <- choice
-    [ multilineStringLiteral hashCount
-    , multilineBytesLiteral  hashCount
-    , simpleStringLiteral    hashCount
-    , simpleBytesLiteral     hashCount
+    [ multilineStringLiteral
+    , multilineBytesLiteral
+    , simpleStringLiteral
+    , simpleBytesLiteral
     , fail "expecting a string or bytes literal"
     ]
-  count hashCount (char '#') <|>
-    fail "the number of closing # must match the number in the opening"
   skipToNextToken True
   pure res
 
-simpleStringLiteral :: Int -> Lexer [Token WithOffset]
-simpleStringLiteral hashCount = do
-  b <- getOffset
-  char '"'
+simpleStringLiteral :: Lexer [Token WithOffset]
+simpleStringLiteral = do
+  hashCount <- try $ fmap length (many $ char '#') <* char '"'
+  b <- subtract 1 <$> getOffset
   let ti = TextInfo SingleLineString hashCount
   res <- charLiteral ti hashCount False False `manyTill` char '"'
   e <- subtract 1 <$> getOffset
+  count hashCount (char '#') <|>
+    fail "the number of closing # must match the number in the opening"
   pure $ postProcess ti b e res
 
-multilineStringLiteral :: Int -> Lexer [Token WithOffset]
-multilineStringLiteral hashCount = do
-  b <- getOffset
-  string "\"\"\"\n"
+multilineStringLiteral :: Lexer [Token WithOffset]
+multilineStringLiteral = do
+  hashCount <- try $ fmap length (many $ char '#') <* string "\"\"\"\n"
+  b <- subtract 3 <$> getOffset
   let ti = TextInfo MultiLinesString hashCount
   res <- charLiteral ti hashCount True False `manyTill` multilineClosing "\"\"\""
   e <- subtract 3 <$> getOffset
+  count hashCount (char '#') <|>
+    fail "the number of closing # must match the number in the opening"
   pure $ postProcess ti b e res
 
-simpleBytesLiteral :: Int -> Lexer [Token WithOffset]
-simpleBytesLiteral hashCount = do
-  b <- getOffset
-  char '\''
+simpleBytesLiteral :: Lexer [Token WithOffset]
+simpleBytesLiteral = do
+  hashCount <- try $ fmap length (many $ char '#') <* char '\''
+  b <- subtract 1 <$> getOffset
   let ti = TextInfo SingleLineBytes hashCount
   res <- charLiteral ti hashCount False True `manyTill` char '\''
   e <- subtract 1 <$> getOffset
+  count hashCount (char '#') <|>
+    fail "the number of closing # must match the number in the opening"
   pure $ postProcess ti b e res
 
-multilineBytesLiteral :: Int -> Lexer [Token WithOffset]
-multilineBytesLiteral hashCount = do
-  b <- getOffset
-  string "'''\n"
+multilineBytesLiteral :: Lexer [Token WithOffset]
+multilineBytesLiteral = do
+  hashCount <- try $ fmap length (many $ char '#') <* string "'''\n"
+  b <- subtract 3 <$> getOffset
   let ti = TextInfo MultiLinesBytes hashCount
   res <- charLiteral ti hashCount True True `manyTill` multilineClosing "'''"
   e <- subtract 3 <$> getOffset
+  count hashCount (char '#') <|>
+    fail "the number of closing # must match the number in the opening"
   pure $ postProcess ti b e res
 
 charLiteral :: TextInfo -> Int -> Bool -> Bool -> Lexer [Token WithOffset]
