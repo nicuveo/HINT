@@ -1,23 +1,44 @@
+{-# OPTIONS_GHC -Wno-missing-signatures #-}
+
 module Lang.Cue.Eval
-  ( -- inlining phase
-    inlineAliases
+  ( inlineAliases
+  , eval
   ) where
 
-import "this" Prelude                  hiding (negate, product, sum)
+import "this" Prelude
 
-import Control.Lens                    hiding (Empty)
+import Control.Lens                    hiding (Empty, List)
 import Data.HashMap.Strict             qualified as M
 import Data.Sequence                   as S
+import Data.Text                       qualified as T
 
+import Lang.Cue.Document               as D
 import Lang.Cue.Error
 import Lang.Cue.Internal.IndexedPlated
-import Lang.Cue.IR
+import Lang.Cue.IR                     as I
 
 
 --------------------------------------------------------------------------------
 -- * Evaluation monad
 
 {-
+
+-- | Wrapper around Document in the Document tree, to add evaluation
+-- information.
+data WithEvalStatus d = WithEvalStatus
+  { esStatus :: EvalStatus
+  , esDoc    :: d
+  }
+
+data EvalStatus
+  = Unevaluated
+  |
+
+-- | Contains all internal information used during the evaluation phase.
+data Context = Context
+  { _result :: Document
+  }
+
 data Context s = Context
   { _currentPath    :: Path
   , _visibleFields  :: HashMap FieldLabel (NonEmpty Path)
@@ -33,6 +54,141 @@ newtype Eval a = Eval { runEval :: a }
 eval :: Expression -> Value
 eval = runEval . evalExpression
 -}
+
+type Eval = Either Errors
+
+eval :: Thunk -> Either Errors Document
+eval = evalToNF
+
+
+--------------------------------------------------------------------------------
+-- * Evaluation
+
+evalToNF :: Thunk -> Eval Document
+evalToNF t = case t of
+  Disjunction        _ -> undefined
+  Unification        _ -> undefined
+  LogicalOr        l r -> join $ evalOr   <$> evalToNF l <*> evalToNF r
+  LogicalAnd       l r -> join $ evalAnd  <$> evalToNF l <*> evalToNF r
+  Equal            l r -> join $ evalEq   <$> evalToNF l <*> evalToNF r
+  NotEqual         l r -> join $ evalNEq  <$> evalToNF l <*> evalToNF r
+  Match            l r -> join $ evalRE   <$> evalToNF l <*> evalToNF r
+  NotMatch         l r -> join $ evalNRE  <$> evalToNF l <*> evalToNF r
+  LessThan         l r -> join $ evalLT   <$> evalToNF l <*> evalToNF r
+  LessOrEqual      l r -> join $ evalLE   <$> evalToNF l <*> evalToNF r
+  GreaterThan      l r -> join $ evalGT   <$> evalToNF l <*> evalToNF r
+  GreaterOrEqual   l r -> join $ evalGE   <$> evalToNF l <*> evalToNF r
+  Addition         l r -> join $ evalAdd  <$> evalToNF l <*> evalToNF r
+  Subtraction      l r -> join $ evalSub  <$> evalToNF l <*> evalToNF r
+  Multiplication   l r -> join $ evalMul  <$> evalToNF l <*> evalToNF r
+  Division         l r -> join $ evalDiv  <$> evalToNF l <*> evalToNF r
+  NumId              n -> evalPlus =<< evalToNF n
+  Negate             n -> evalNeg  =<< evalToNF n
+  LogicalNot         n -> evalNot  =<< evalToNF n
+  IsNotEqualTo       n -> evalUNE  =<< evalToNF n
+  Matches            n -> evalURE  =<< evalToNF n
+  Doesn'tMatch       n -> evalUNRE =<< evalToNF n
+  IsLessThan         n -> evalULT  =<< evalToNF n
+  IsLessOrEqualTo    n -> evalULE  =<< evalToNF n
+  IsGreaterThan      n -> evalUGT  =<< evalToNF n
+  IsGreaterOrEqualTo n -> evalUGE  =<< evalToNF n
+  Select _ _           -> undefined
+  Index  _ _           -> undefined
+  Slice  _ _ _         -> undefined
+  Call _fun _args      -> undefined
+  I.List  ListInfo {}  -> undefined -- traverse evalEmbedding listElements
+  Block _              -> undefined
+  Interpolation _ _ts  -> undefined -- T.concat <$> traverse evalToString ts
+  Ref _absolutePath    -> undefined
+  Alias _p _l          -> error "unevaluated alias"
+  Leaf  a              -> pure $ Atom  a
+  Type  _              -> pure $ Thunk t
+  Func  _              -> pure $ Thunk t
+  Top                  -> pure $ Thunk t
+  Bottom               -> error "bottom!"
+
+evalOr = curry \case
+  (Atom (Boolean l), Atom (Boolean r)) -> pure $ Atom $ Boolean $ l || r
+  (l, r)                               -> typeMismatch2 "||" l r
+
+evalAnd = curry \case
+  (Atom (Boolean l), Atom (Boolean r)) -> pure $ Atom $ Boolean $ l && r
+  (l, r)                               -> typeMismatch2 "&&" l r
+
+evalAdd = curry \case
+  (Atom (Integer a), Atom (Integer b)) -> pure $ Atom $ Integer $ a + b
+  (Atom (Integer a), Atom (Float   b)) -> pure $ Atom $ Float   $ fromInteger a + b
+  (Atom (Float   a), Atom (Integer b)) -> pure $ Atom $ Float   $ a + fromInteger b
+  (Atom (Float   a), Atom (Float   b)) -> pure $ Atom $ Float   $ a + b
+  (Atom (String  a), Atom (String  b)) -> pure $ Atom $ String  $ a <> b
+  (Atom (Bytes   a), Atom (Bytes   b)) -> pure $ Atom $ Bytes   $ a <> b
+  (l, r)                               -> typeMismatch2 "+" l r
+
+evalSub = curry \case
+  (Atom (Integer a), Atom (Integer b)) -> pure $ Atom $ Integer $ a - b
+  (Atom (Integer a), Atom (Float   b)) -> pure $ Atom $ Float   $ fromInteger a - b
+  (Atom (Float   a), Atom (Integer b)) -> pure $ Atom $ Float   $ a - fromInteger b
+  (Atom (Float   a), Atom (Float   b)) -> pure $ Atom $ Float   $ a - b
+  (l, r)                               -> typeMismatch2 "-" l r
+
+evalMul = curry \case
+  (Atom (Integer a), Atom (Integer b)) -> pure $ Atom $ Integer $ a * b
+  (Atom (Integer a), Atom (Float   b)) -> pure $ Atom $ Float   $ fromInteger a * b
+  (Atom (Float   a), Atom (Integer b)) -> pure $ Atom $ Float   $ a * fromInteger b
+  (Atom (Float   a), Atom (Float   b)) -> pure $ Atom $ Float   $ a * b
+  (Atom (Integer n), Atom (String  s)) -> pure $ Atom $ String  $ T.replicate (fromInteger n) s
+  (Atom (String  s), Atom (Integer n)) -> pure $ Atom $ String  $ T.replicate (fromInteger n) s
+  (Atom (Integer n), Atom (Bytes   s)) -> pure $ Atom $ Bytes   $ T.replicate (fromInteger n) s
+  (Atom (Bytes   s), Atom (Integer n)) -> pure $ Atom $ Bytes   $ T.replicate (fromInteger n) s
+  (l, r)                               -> typeMismatch2 "*" l r
+
+evalDiv = curry \case
+  (Atom (Integer a), Atom (Integer b)) -> pure $ Atom $ Float   $ fromInteger a / fromInteger b
+  (Atom (Integer a), Atom (Float   b)) -> pure $ Atom $ Float   $ fromInteger a /             b
+  (Atom (Float   a), Atom (Integer b)) -> pure $ Atom $ Float   $             a / fromInteger b
+  (Atom (Float   a), Atom (Float   b)) -> pure $ Atom $ Float   $             a /             b
+  (l, r)                               -> typeMismatch2 "/" l r
+
+evalEq   = undefined
+evalNEq  = undefined
+evalRE   = undefined
+evalNRE  = undefined
+evalLT   = undefined
+evalLE   = undefined
+evalGT   = undefined
+evalGE   = undefined
+
+evalPlus t = case t of
+  Atom (Integer _) -> pure t
+  Atom (Float   _) -> pure t
+  _                -> typeMismatch "+" t
+
+evalNeg = \case
+  Atom (Integer a) -> pure $ Atom $ Integer $ negate a
+  Atom (Float   a) -> pure $ Atom $ Float   $ negate a
+  t                -> typeMismatch "-" t
+
+evalNot = \case
+  Atom (Boolean b) -> pure $ Atom $ Boolean $ not b
+  t                -> typeMismatch "!" t
+
+evalUNE  = undefined
+evalURE  = undefined
+evalUNRE = undefined
+evalULT  = undefined
+evalULE  = undefined
+evalUGT  = undefined
+evalUGE  = undefined
+
+
+--------------------------------------------------------------------------------
+-- * Helpers
+
+typeMismatch :: String -> Document -> Eval a
+typeMismatch = undefined
+typeMismatch2  :: String -> Document -> Document -> Eval a
+typeMismatch2 = undefined
+
 
 
 --------------------------------------------------------------------------------
@@ -192,7 +348,7 @@ inlineAliases = itransformM go Empty
 -- | Inline a field alias, if any.
 --
 -- This function also removes the mention of the alias from the IR altogether.
-inlineFieldAlias :: Path -> Field -> Field
+inlineFieldAlias :: Path -> I.Field -> I.Field
 inlineFieldAlias path f = case fieldAlias f of
   Nothing   -> f
   Just name -> f { fieldAlias = Nothing }

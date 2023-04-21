@@ -85,6 +85,9 @@ data Bound e o r = Bound
   }
   deriving (Show, Eq)
 
+unbound :: Bound e o r
+unbound = Bound Open Open [] [] []
+
 type BoolBound    = Bound Bool    Void    Void
 type IntegerBound = Bound Integer Integer Void
 type FloatBound   = Bound Float   Float   Void

@@ -21,7 +21,7 @@ module Prelude
 --------------------------------------------------------------------------------
 -- Re-exports
 
-import Control.Applicative             as P (liftA2)
+import Control.Applicative             as P (liftA, liftA2)
 import Control.Arrow                   as P (first, left, second, (&&&), (***),
                                              (<<<), (>>>))
 import Control.Monad.Except            as P
