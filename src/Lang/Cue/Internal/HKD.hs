@@ -1,5 +1,3 @@
-{-# LANGUAGE UndecidableInstances #-}
-
 module Lang.Cue.Internal.HKD where
 
 import "this" Prelude
@@ -10,7 +8,7 @@ import Unsafe.Coerce
 --------------------------------------------------------------------------------
 -- * HKD
 
--- | This class allows for erasure of identity in HKD types.
+-- | This type family allows for erasure of 'Identity' in HKD types.
 --
 -- Given a type @A'@ such that
 --
@@ -75,16 +73,15 @@ type FFunction f g = forall a. f a -> g a
 class FFunctor t where
   ffmap :: forall f g. (Functor f, Functor g) => FFunction f g -> t f -> t g
 
--- | Apply a @f a -> g a@ function on a @HKD f a@ by relying on the @Coercible@
--- instances.
+-- | Apply a @f a -> g a@ function on a @HKD f a@.
 --
 -- Used to implement @FFunctor@ instances without having to manually convert
--- back and forth.
+-- back and forth with 'toHKD' and 'fromHKD'.
 ffapply :: forall a f g. FFunction f g -> HKD f a -> HKD g a
 ffapply f = toHKD @g . f @a . fromHKD @f
 
 -- | Apply a @f a -> g a@ function on a @HKD f a@ where @a@ is itself a HKD type
--- parameterized by @f@: this performs a recurvise @ffmap@, and use @ffaply@ on
+-- parameterized by @f@: this performs a recurvise @ffmap@, and uses @ffaply@ on
 -- the result.
 ffrecur :: forall t f g. (Functor f, Functor g, FFunctor t) => FFunction f g -> HKD f (t f) -> HKD g (t g)
 ffrecur f = ffapply @(t g) f . hmap @f (ffmap @t f)
@@ -93,12 +90,12 @@ ffrecur f = ffapply @(t g) f . hmap @f (ffmap @t f)
 --
 -- This allows the caller to provide a @f a -> a@ function instead of having to
 -- use an explicit @f a -> Identity a@ one.
-reify :: forall t f. (Functor f, FFunctor t) => (forall a. f a -> a) -> t f -> t Identity
+reify :: (Functor f, FFunctor t) => (forall a. f a -> a) -> t f -> t Identity
 reify f = ffmap  (Identity . f)
 
 -- | Special case of @ffmap@ where the source functor is @Identity@.
 --
 -- This allows the caller to provide a @a -> f a@ function instead of having to
 -- use an explicit @Identity a -> f a@ one.
-abstract :: forall t f. (Functor f, FFunctor t) => (forall a. a -> f a) -> t Identity -> t f
+abstract :: (Functor f, FFunctor t) => (forall a. a -> f a) -> t Identity -> t f
 abstract f = ffmap  (f . runIdentity)
