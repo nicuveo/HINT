@@ -116,7 +116,7 @@ evalToWHNF t = case t of
   Ref _absolutePath    -> undefined
   Alias _p _l          -> error "unevaluated alias"
   Leaf  a              -> pure $ Atom  a
-  Type  _              -> pure $ Thunk t
+  I.Type c             -> pure $ D.Type c
   Func  _              -> pure $ Thunk t
   Top                  -> pure $ Thunk t
   Bottom               -> report ArisedFromLiteral

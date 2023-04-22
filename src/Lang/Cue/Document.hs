@@ -32,6 +32,7 @@ data Document' f
   | Struct       (StructInfo' f)
   -- constraints
   | NotNull
+  | Type         I.Type
   | IntegerBound IntegerBound
   | FloatBound   FloatBound
   | StringBound  StringBound
@@ -49,6 +50,7 @@ instance FFunctor Document' where
   ffmap f = \case
     NotNull        -> NotNull
     Atom         x -> Atom         x
+    Type         x -> Type         x
     IntegerBound x -> IntegerBound x
     FloatBound   x -> FloatBound   x
     StringBound  x -> StringBound  x
@@ -148,6 +150,7 @@ instance HasDocs (HKD f (Document' f)) f => Plated (Document' f) where
   plate f = \case
     NotNull        -> pure NotNull
     Atom         x -> pure $ Atom         x
+    Type         x -> pure $ Type         x
     IntegerBound x -> pure $ IntegerBound x
     FloatBound   x -> pure $ FloatBound   x
     StringBound  x -> pure $ StringBound  x
