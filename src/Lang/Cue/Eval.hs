@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
+{-# LANGUAGE RecursiveDo #-}
 
 module Lang.Cue.Eval
   ( inlineAliases
@@ -16,6 +17,7 @@ import Regex.RE2                       qualified as RE2
 
 import Lang.Cue.Document               as D
 import Lang.Cue.Error
+import Lang.Cue.Internal.HKD
 import Lang.Cue.Internal.IndexedPlated
 import Lang.Cue.IR                     as I
 import Lang.Cue.Location
@@ -58,18 +60,27 @@ eval :: Expression -> Value
 eval = runEval . evalExpression
 -}
 
-type Eval = Either Errors
+data EvalError
+  = CannotBeEvaluatedYet
+  | EvaluationFailed (Seq BottomSource)
+
+type Eval = Either EvalError
 
 eval :: Thunk -> Either Errors Document
-eval = evalToNF
+eval t = translateError $ evalToNF `orRecoverWith` t
+  where
+    translateError = \case
+      Left (EvaluationFailed b) -> Left $ fmap (withLocation (Location "" [] 0) . BottomError) b
+      Left CannotBeEvaluatedYet -> Right $ Thunk t
+      Right d                   -> Right d
 
 
 --------------------------------------------------------------------------------
 -- * Evaluation
 
-evalToNF :: Thunk -> Eval Document
-evalToNF t = case t of
-  Disjunction        _ -> undefined
+evalToWHNF :: Thunk -> Eval Document
+evalToWHNF t = case t of
+  Disjunction        d -> evalDisjunction d
   Unification        _ -> undefined
   LogicalOr        l r -> join $ evalOr   <$> evalToNF l <*> evalToNF r
   LogicalAnd       l r -> join $ evalAnd  <$> evalToNF l <*> evalToNF r
@@ -108,7 +119,37 @@ evalToNF t = case t of
   Type  _              -> pure $ Thunk t
   Func  _              -> pure $ Thunk t
   Top                  -> pure $ Thunk t
-  Bottom               -> report $ BottomError ArisedFromLiteral
+  Bottom               -> report ArisedFromLiteral
+
+evalToNF :: Thunk -> Eval Document
+evalToNF = evalToWHNF >=> \case
+  Disjoint v d -> case (v, d) of
+    (      Empty,       Empty) -> unreachable
+    (x :<| Empty,       Empty) -> pure x
+    (_          ,       Empty) -> throwError CannotBeEvaluatedYet
+    (_          , x :<| Empty) -> pure x
+    (_          , _          ) -> throwError CannotBeEvaluatedYet
+  d -> pure d
+
+
+evalDisjunction :: Seq (Bool, Thunk) -> Eval Document
+evalDisjunction disj = mdo
+  (result, starred, errors, marked) <-
+    disj & flip foldlM (S.empty, S.empty, S.empty, False) \(r, s, e, m) (star, thunk) ->
+      catchBottom (evalToWHNF thunk) <&> \case
+        Left  err -> (r, s, e <> err, m || star)
+        Right doc ->
+          let (val, def) = case doc of
+                Disjoint v Empty -> (v, if star then v else Empty)
+                Disjoint v d     -> (v, if star || not marked then d else Empty)
+                _                -> (pure doc, if star then pure doc else Empty)
+          in  (r <> val, s <> def, e, m || star)
+  if S.null result
+    then throwError $ EvaluationFailed errors
+    else pure $ Disjoint (nubBy mergeable result) (nubBy mergeable starred)
+  where
+    mergeable :: Document -> Document -> Bool
+    mergeable = (==) `on` (Mergeable . abstract Mergeable)
 
 evalOr = curry \case
   (Atom (Boolean l), Atom (Boolean r)) -> pure $ Atom $ Boolean $ l || r
@@ -477,10 +518,10 @@ errorOnCycle path name = void . transformM \case
 
 
 --------------------------------------------------------------------------------
--- * Helpers
+-- * Error handling
 
-report :: ErrorInfo -> Eval a
-report = throwError . pure . withLocation (Location "FIXME" [] 0)
+report :: BottomSource -> Eval a
+report = throwError . EvaluationFailed . pure
 
 typeMismatch :: String -> Document -> Eval a
 typeMismatch = undefined
@@ -488,9 +529,41 @@ typeMismatch = undefined
 typeMismatch2  :: String -> Document -> Document -> Eval a
 typeMismatch2 = undefined
 
+orRecoverWith :: (Thunk -> Eval Document) -> Thunk -> Eval Document
+orRecoverWith action thunk = action thunk `catchError` \case
+  CannotBeEvaluatedYet -> pure $ Thunk thunk
+  err                  -> throwError err
+
+catchBottom :: Eval Document -> Eval (Either (Seq BottomSource) Document)
+catchBottom action = fmap Right action `catchError` \case
+  EvaluationFailed errs -> pure $ Left errs
+  err                   -> throwError err
+
+
+--------------------------------------------------------------------------------
+-- * Helpers
+
 reMatch :: Text -> Text -> Eval Bool
 reMatch str pat = do
   -- RE2 expects UTF-8 by default, and that's fine
   compiled <- RE2.compile (encodeUtf8 pat)
     `onLeft` \e -> error (RE2.errorMessage e)
   pure $ isJust $ RE2.find compiled (encodeUtf8 str)
+
+newtype Mergeable a = Mergeable a
+  deriving Functor
+
+instance Eq (Mergeable (Document' Mergeable)) where
+  Mergeable d1 == Mergeable d2 = case (d1, d2) of
+    (NotNull       , NotNull       ) -> True
+    (Atom         x, Atom         y) -> x == y
+    (IntegerBound x, IntegerBound y) -> x == y
+    (FloatBound   x, FloatBound   y) -> x == y
+    (StringBound  x, StringBound  y) -> x == y
+    (BytesBound   x, BytesBound   y) -> x == y
+    (D.List       x, D.List       y) -> x == y
+    -- WARNING: we ignore attributes for the purpose of merging
+    -- similar values in a disjunction, just like te playground does
+    (Struct (StructInfo fs1 _), Struct (StructInfo fs2 _)) ->
+      fmap D.fieldValue fs1 == fmap D.fieldValue fs2
+    _ -> False

@@ -74,3 +74,38 @@ a: {
   - [ ] the playground does not reject having multiple imports with the same alias
   - [ ] the reference claims that `len([1,2,3,...]` is `>= 3`, but the playground resolves it to `3`
   - [ ] the playground allows "_" as an alias, but it can't be used, which always results in an error
+  - [ ] disjunction merges `s1 | s1` into `s1` even if their attributes differ, keeping the attributes of the left-most one
+  - [ ] disjunction CREATES NEW ATTRIBUTES?!
+```cue
+// in
+a: {
+  a:1
+  @foo(bar)
+}
+b:{
+  a:2
+  @foo(baz)
+}
+c: a | b
+
+// out
+a: {
+  @foo(baz)
+  a: 1
+}
+b: {
+  @foo(bar)
+  a: 2
+}
+c: {
+  {
+    @foo(baz)
+    a: 1
+  } |
+  {
+    @foo(bar)
+    a: 2
+  }
+  @foo(bar)
+}
+```

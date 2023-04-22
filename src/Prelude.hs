@@ -14,6 +14,8 @@ module Prelude
     -- * either helpers
   , onLeft
   , onLeftM
+    -- * sequence hepers
+  , nubBy
     -- * nested fmaps
   , fmap2
   , (<<$>>)
@@ -66,6 +68,7 @@ import "base" Prelude                  as P hiding (lookup)
 
 import Control.Monad.Validate
 import Control.Monad.Validate.Internal
+import Data.Sequence                   (Seq (..))
 
 
 --------------------------------------------------------------------------------
@@ -94,6 +97,17 @@ onLeft a f = either f pure a
 
 onLeftM :: Monad m => m (Either e a) -> (e -> m a) -> m a
 onLeftM a f = a >>= flip onLeft f
+
+
+--------------------------------------------------------------------------------
+-- Sequence helpers
+
+nubBy :: (a -> a -> Bool) -> Seq a -> Seq a
+nubBy eq = foldl' go Empty
+  where
+    go res x
+      | any (eq x) res = res
+      | otherwise      = res :|> x
 
 
 --------------------------------------------------------------------------------

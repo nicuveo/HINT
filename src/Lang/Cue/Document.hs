@@ -28,7 +28,7 @@ import Lang.Cue.IR           qualified as I
 data Document' f
   -- structure
   = Atom         I.Atom
-  | List         [HKD f (Document' f)]
+  | List         (Seq (HKD f (Document' f)))
   | Struct       (StructInfo' f)
   -- constraints
   | NotNull
@@ -37,6 +37,7 @@ data Document' f
   | StringBound  StringBound
   | BytesBound   BytesBound
   -- unevaluated
+  | Disjoint     (Seq (HKD f (Document' f))) (Seq (HKD f (Document' f)))
   | Thunk        I.Thunk
 
 type Document = Document' Identity
@@ -53,8 +54,11 @@ instance FFunctor Document' where
     StringBound  x -> StringBound  x
     BytesBound   x -> BytesBound   x
     Thunk        x -> Thunk        x
-    List         l -> List   $ map (ffrecur @Document' f) l
-    Struct       s -> Struct $ ffmap f s
+    List         l -> List     $ fmap (ffrecur @Document' f) l
+    Struct       s -> Struct   $ ffmap f s
+    Disjoint   l s -> Disjoint
+      (fmap (ffrecur @Document' f) l)
+      (fmap (ffrecur @Document' f) s)
 
 
 --------------------------------------------------------------------------------
@@ -104,7 +108,7 @@ data EndPoint o
 -- * Struct
 
 data StructInfo' f = StructInfo
-  { structFields     :: HashMap Text (Field' f)
+  { structFields     :: HashMap I.FieldLabel (Field' f)
   , structAttributes :: I.Attributes
   }
 
@@ -149,8 +153,9 @@ instance HasDocs (HKD f (Document' f)) f => Plated (Document' f) where
     StringBound  x -> pure $ StringBound  x
     BytesBound   x -> pure $ BytesBound   x
     Thunk        x -> pure $ Thunk        x
-    List         l -> List   <$> documents f l
-    Struct       s -> Struct <$> documents f s
+    Disjoint   l s -> Disjoint <$> documents f l <*> documents f s
+    List         l -> List     <$> documents f l
+    Struct       s -> Struct   <$> documents f s
 
 class HasDocs a f | a -> f where
   documents :: Traversal' a (Document' f)
@@ -160,7 +165,7 @@ class HasDocs a f | a -> f where
 instance HasDocs (Document' f) f where
   documents = id
 
-instance HasDocs a f => HasDocs [a] f
+instance HasDocs a f => HasDocs (Seq a) f
 
 instance HasDocs a f => HasDocs (HashMap k a) f where
 

@@ -618,12 +618,7 @@ translatePrimaryExpr = \case
     l <- case s of
       Left  i -> translateIdentifier i
       Right n -> pure $ FieldLabel n Regular
-    -- if we detect that the LHS was a reference, we alter the reference to
-    -- point to the inner field, which avoids having to evaluate the entire
-    -- reference
-    pure $ case t of
-      Ref p -> Ref $ p :|> PathField l
-      _     -> Select t l
+    pure $ Select t l
   PrimaryIndex pe e -> Index
     <$> translatePrimaryExpr pe
     <*> translateExpr e
