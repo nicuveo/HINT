@@ -219,7 +219,7 @@ resolveBuiltin = getIdentifier >>> pure. \case
   -- types
   "bool"    -> Just $ Type BooleanType
   "number"  -> Just $ Type NumberType
-  "integer" -> Just $ Type IntegerType
+  "int"     -> Just $ Type IntegerType
   "float"   -> Just $ Type FloatType
   "string"  -> Just $ Type StringType
   "bytes"   -> Just $ Type BytesType
