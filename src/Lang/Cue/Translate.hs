@@ -19,6 +19,7 @@ import Data.List              qualified as L
 import Data.List.NonEmpty     as NE
 import Data.Sequence          as Seq
 import Data.Text              qualified as T
+import GHC.Stack
 
 import Lang.Cue.AST           as A
 import Lang.Cue.Builtins      qualified as F
@@ -94,22 +95,21 @@ translateExpression = runTranslation mempty . translateExpr
 -- | Pushes a new field on the current path for the duration of the given
 -- action. The field is popped back when the action terminates.
 --
--- To guarantee that we never fail to pop the path back, this function **catches
--- errors** arising from the use of 'refute', using 'tolerate'. This means that,
--- on error, we ignore the rest of the field, but attempt to resume translation
--- to collect as many errors as possible.
---
--- We don't attempt to catch actual exceptions with 'finally', since actual IO
--- exceptions are not used as a control mechanism throughout the translation.
-withPath :: PathElem -> Translation a -> Translation (Maybe a)
+-- Given the way the translation monad is stacked, we don't need to use
+-- 'tolerate' to ensure that the path is properly popped on the way back up: if
+-- a validation error happens, the state will resume to what it was before the
+-- call to 'tolerate'.
+withPath :: HasCallStack => PathElem -> Translation a -> Translation a
 withPath label action = do
   currentPath %= (|> label)
-  result <- tolerate action
+  result <- action
   currentPath %= \case
     upperPath :|> _ -> upperPath
-    -- if we reach this, it means that the action erroneously modified the path
-    _               -> unreachable
+    _               -> panic PopEmptyPath
   pure result
+
+withField :: FieldLabel -> Translation a -> Translation a
+withField f action = pushField f *> action <* popField f
 
 -- | Add the absolute path of the given field to the current scope.
 pushField :: FieldLabel -> Translation ()
@@ -122,18 +122,18 @@ popField :: FieldLabel -> Translation ()
 popField f = visibleFields %= flip M.update f \(_ :| t) -> nonEmpty t
 
 -- | Add the given alias to the current scope.
-pushAlias :: (FieldLabel, Path) -> Translation ()
+pushAlias :: FieldLabel -> Path -> Translation ()
 pushAlias = pushAliasWith False
 
 -- | Add the given alias to the current scope at current path.
 pushAliasAtCurrentPath :: FieldLabel -> Translation ()
 pushAliasAtCurrentPath l = do
   parentPath <- use currentPath
-  pushAliasWith False (l, parentPath)
+  pushAliasWith False l parentPath
 
 -- | Add the given alias to the current scope, with the given used status.
-pushAliasWith :: Bool -> (FieldLabel, Path) -> Translation ()
-pushAliasWith b (l, p) =
+pushAliasWith :: Bool -> FieldLabel -> Path -> Translation ()
+pushAliasWith b l p =
   visibleAliases %= M.insertWith (<>) l (pure (p, b))
 
 -- | Mark the given alias as used. This function does NOT check that the alias
@@ -161,16 +161,14 @@ popAndCheckAlias l =
 -- | Pushes all the definition in a block onto the current scope, runs the given
 -- action, then pops the newly added fields. This function will raise non-fatal
 -- errors if it detects that an alias was popped unused (see 'Scope').
--- Like 'withPath', it 'tolerates' errors from the given action, to ensure we
--- end up with a correct scope.
 withScope
   :: (HashSet FieldLabel, HashMap FieldLabel Path)
   -> Translation a
-  -> Translation (Maybe a)
+  -> Translation a
 withScope (fields, aliases) action = do
-  traverse_ pushAlias $ M.toList aliases
+  M.traverseWithKey pushAlias aliases
   traverse_ pushField fields
-  result <- tolerate action
+  result <- action
   traverse_ popField fields
   traverse_ popAndCheckAlias $ M.keys aliases
   pure result
@@ -250,7 +248,7 @@ translateBlock decls = do
         , _biIdentFields  = M.empty
         , _biStringFields = M.empty
         , _biConstraints  = M.empty
-        , _biEmbeddings   = Seq.empty
+        , _biEmbeddings   = M.empty
         , _biAttributes   = M.empty
         , _biClosed       = False
         }
@@ -261,8 +259,7 @@ translateBlock decls = do
     (translateDeclaration scope)
     (mempty, mempty, pure startBlock)
     (L.zip [0..] decls)
-  block <- withScope (blockFields, blockAliases) blockBuilder
-  pure $ fromMaybe startBlock block
+  withScope (blockFields, blockAliases) blockBuilder
 
 translateDeclaration
   :: Scope
@@ -304,7 +301,7 @@ translateDeclaration scope (fields, aliases, builder) (declIndex, decl) = case d
       newAliases = M.insert fieldLabel aliasPath aliases
       newBuilder = do
         block <- builder
-        thunk <- recover $ fmap join $ withPath pathItem do
+        thunk <- withRecovery $ withPath pathItem do
           -- WARNING: UNDOCUMENTED BEHAVIOUR
           -- special case for let clauses: we have to remove the let identifier
           -- itself from the scope, to prevent let clause self-recursion, and to
@@ -312,11 +309,10 @@ translateDeclaration scope (fields, aliases, builder) (declIndex, decl) = case d
           -- undocumented behaviour, and it's unclear whether it is on purpose or
           -- not
           (path, wasUsed) <- popAlias fieldLabel
-          result <- tolerate $ translateExpr letExpression
-          pushAliasWith wasUsed (fieldLabel, path)
+          result <- translateExpr letExpression
+          pushAliasWith wasUsed fieldLabel path
           pure result
-        pure $ block
-          & biAliases . at fieldLabel ?~ (pathItem, thunk)
+        pure $ block & biAliases . at fieldLabel ?~ (pathItem, thunk)
     pure (fields, newAliases, newBuilder)
 
   -- Embedding
@@ -329,15 +325,17 @@ translateDeclaration scope (fields, aliases, builder) (declIndex, decl) = case d
     let
       newBuilder = do
         block <- builder
-        thunk <- recover $ tolerate $ translateExpr aeExpression
-        pure $ block & biEmbeddings %~ (:|> InlineThunk thunk)
+        thunk <- withRecovery $ withPath (PathEmbedding declIndex) $
+          translateExpr aeExpression
+        pure $ block & biEmbeddings . at declIndex ?~ InlineThunk thunk
     pure (fields, aliases, newBuilder)
   DeclarationEmbedding (EmbeddedComprehension A.Comprehension {..}) -> do
     let
       newBuilder = do
         block <- builder
-        embed <- translateComprehension compClauses compResult
-        pure $ block & biEmbeddings %~ (:|> embed)
+        embed <- tolerate $ withPath (PathEmbedding declIndex) $
+          translateComprehension 0 compClauses compResult
+        pure $ block & biEmbeddings . at declIndex .~ embed
     pure (fields, aliases, newBuilder)
 
   -- Ellipsis
@@ -384,9 +382,9 @@ translateDeclaration scope (fields, aliases, builder) (declIndex, decl) = case d
           newBuilder = do
             block <- builder
             cpath <- use currentPath
-            thunk <- recover $ fmap join $ withPath pathItem do
+            thunk <- withRecovery $ withPath pathItem do
               whenJust eAlias pushAliasAtCurrentPath
-              result  <- tolerate $ translateExpr aeExpression
+              result <- translateExpr aeExpression
               whenJust eAlias popAndCheckAlias
               pure result
             let
@@ -397,9 +395,9 @@ translateDeclaration scope (fields, aliases, builder) (declIndex, decl) = case d
                 , fieldAttributes = translateAttributes fieldAttributes
                 }
               aThunk = Ref $ cpath :|> pathItem
-              addField = biStringFields . at declIndex ?~ (nameThunk, field)
-              addAlias = maybe id (\a -> biAliases . at a ?~ (pathItem, aThunk)) fAlias
-            pure $ block & addField & addAlias
+            pure $ block
+              & biStringFields . at   declIndex ?~ (nameThunk, field)
+              & biAliases      . atIf fAlias    ?~ (pathItem, aThunk)
         pure (fields, newAliases, newBuilder)
 
       -- Identifier field
@@ -448,9 +446,9 @@ translateDeclaration scope (fields, aliases, builder) (declIndex, decl) = case d
           newBuilder = do
             block <- builder
             cpath <- use currentPath
-            thunk <- recover $ fmap join $ withPath pathItem do
+            thunk <- withRecovery $ withPath pathItem do
               whenJust eAlias pushAliasAtCurrentPath
-              result  <- tolerate $ translateExpr aeExpression
+              result <- translateExpr aeExpression
               whenJust eAlias popAndCheckAlias
               pure result
             let
@@ -461,9 +459,9 @@ translateDeclaration scope (fields, aliases, builder) (declIndex, decl) = case d
                 , fieldAttributes = translateAttributes fieldAttributes
                 }
               aThunk = Ref $ cpath :|> pathItem
-              addField = biIdentFields %~ M.insertWith (flip (<>)) fieldName (pure field)
-              addAlias = maybe id (\a -> biAliases .at a ?~ (pathItem, aThunk)) fAlias
-            pure $ block & addField & addAlias
+            pure $ block
+              & biIdentFields %~ M.insertWith (flip (<>)) fieldName (pure field)
+              & biAliases . atIf fAlias ?~ (pathItem, aThunk)
         pure (newFields, newAliases, newBuilder)
 
       -- Constraint field
@@ -500,12 +498,12 @@ translateDeclaration scope (fields, aliases, builder) (declIndex, decl) = case d
           newBuilder = do
             block <- builder
             -- evaluate the condition
-            condThunk <- recover $ tolerate $ translateExpr consExpr
+            condThunk <- withRecovery $ translateExpr consExpr
             -- evaluate the expression
-            exprThunk <- recover $ fmap join $ withPath pathItem do
+            exprThunk <- withRecovery $ withPath pathItem do
               whenJust cAlias pushAliasAtCurrentPath
               whenJust eAlias pushAliasAtCurrentPath
-              result  <- tolerate $ translateExpr exprExpr
+              result <- translateExpr exprExpr
               whenJust eAlias popAndCheckAlias
               whenJust cAlias popAndCheckAlias
               pure result
@@ -516,49 +514,39 @@ translateDeclaration scope (fields, aliases, builder) (declIndex, decl) = case d
 
 -- | Recursively translates a comprehension clause.
 --
--- Each identifier in a clause is treated is a field, and we therefore
--- 'tolerate' that arise from processing the rest of the comprehension to make
--- sure that we pop the fields back.
+-- Each identifier in a clause is treated is a field.
 translateComprehension
-  :: NonEmpty ComprehensionClause
+  :: Int
+  -> NonEmpty ComprehensionClause
   -> [Declaration]
   -> Translation I.Embedding
-translateComprehension (clause :| rest) decl =
-  fmap (fromMaybe (InlineThunk $ Leaf Null) . join) $
-    tolerate $ case clause of
-      ComprehensionFor n e -> do
-        l <- translateIdentifier n
-        t <- translateExpr e
-        recur [l] $ For l t
-      ComprehensionIndexedFor i n e -> do
-        j <- translateIdentifier i
-        l <- translateIdentifier n
-        t <- translateExpr e
-        recur [j,l] $ IndexedFor j l t
-      ComprehensionIf e -> do
-        t <- translateExpr e
-        recur [] $ If t
-      ComprehensionLet n e -> do
-        l <- translateIdentifier n
-        t <- translateExpr e
-        recur [l] $ Let l t
+translateComprehension !clauseIndex (clause :| rest) decl =
+  withPath (PathEmbeddingClause clauseIndex) $ case clause of
+    ComprehensionFor n e -> do
+      l <- translateIdentifier n
+      t <- translateExpr e
+      withField l $ recur $ For l t
+    ComprehensionIndexedFor i n e -> do
+      j <- translateIdentifier i
+      l <- translateIdentifier n
+      t <- translateExpr e
+      withField j $ withField l $ recur $ IndexedFor j l t
+    ComprehensionIf e -> do
+      t <- translateExpr e
+      recur $ If t
+    ComprehensionLet n e -> do
+      l <- translateIdentifier n
+      t <- translateExpr e
+      withField l $ recur $ Let l t
   where
-    recur fs c = do
-      -- the playground treats comprehension identifiers as fields, not aliases
-      -- we do the same
-      traverse_ pushField fs
-      result <- tolerate $ case nonEmpty rest of
-        Just cs ->
-          translateComprehension cs decl <&> \case
-            -- something went wrong, ignore this result
-            InlineThunk t -> InlineThunk t
-            -- add this clause on the way back
-            I.Comprehension rcs b -> I.Comprehension (NE.cons c rcs) b
-        Nothing -> do
-          b <- translateBlock decl
-          pure $ I.Comprehension (pure c) b
-      traverse_ popField (L.reverse fs)
-      pure result
+    recur c = case nonEmpty rest of
+      Just cs ->
+        translateComprehension (clauseIndex + 1) cs decl <&> \case
+          I.Comprehension rcs b -> I.Comprehension (NE.cons c rcs) b
+          InlineThunk _         -> unreachable
+      Nothing -> do
+        b <- withPath PathEmbeddingThunk $ translateBlock decl
+        pure $ I.Comprehension (pure c) b
 
 translateExpr :: Expression -> Translation Thunk
 translateExpr = \case
@@ -653,19 +641,19 @@ translateLiteral = \case
 
 translateListLiteral :: A.ListLiteral -> Translation Thunk
 translateListLiteral = fmap List . \case
-  ClosedList es    -> ListInfo <$> traverse go es <*> pure Nothing
-  OpenList   es el -> ListInfo <$> traverse go es <*> case el of
+  ClosedList es    -> ListInfo <$> traverseWithIndex go (Seq.fromList es) <*> pure Nothing
+  OpenList   es el -> ListInfo <$> traverseWithIndex go (Seq.fromList es) <*> case el of
     Nothing -> pure $ Just Top
     Just e  -> Just <$> translateExpr e
   where
-    go = \case
+    go i = withPath (PathEmbedding i) . \case
       EmbeddedExpression AliasedExpression {..} -> do
         whenJust aeAlias $ const $
           refute $ error "alias in embed" -- FIXME
-        thunk <- recover $ tolerate $ translateExpr aeExpression
+        thunk <- withRecovery $ translateExpr aeExpression
         pure $ InlineThunk thunk
       EmbeddedComprehension A.Comprehension {..} ->
-        translateComprehension compClauses compResult
+        translateComprehension 0 compClauses compResult
 
 translateStringLiteral :: TextInfo -> StringLiteral -> Translation Thunk
 translateStringLiteral i l = do
@@ -705,8 +693,13 @@ translateAttributes = foldr step mempty
 
 -- | If evaluation of a thunk failed, and we won't emit a translation, just
 -- use @null@ instead of the missing thunk.
-recover :: Functor f => f (Maybe Thunk) -> f Thunk
-recover = fmap $ fromMaybe $ Leaf Null
+withRecovery :: Translation Thunk -> Translation Thunk
+withRecovery = fmap (fromMaybe $ Leaf Null) . tolerate
+
+atIf :: At m => Maybe (Index m) -> Lens' m (Maybe (IxValue m))
+atIf = \case
+  Just x  -> at x
+  Nothing -> noopLens
 
 processImport :: HashMap Text Package -> Packages -> Import -> Either Errors Packages
 processImport pkgs m Import {..} = do

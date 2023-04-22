@@ -111,7 +111,7 @@ data BlockInfo = BlockInfo
   , _biIdentFields  :: HashMap FieldLabel (Seq Field)
   , _biStringFields :: HashMap Int (Thunk, Field)
   , _biConstraints  :: HashMap Int (Thunk, Thunk)
-  , _biEmbeddings   :: Seq Embedding
+  , _biEmbeddings   :: HashMap Int Embedding
   , _biAttributes   :: Attributes
   , _biClosed       :: Bool
   } deriving (Show, Eq)
@@ -149,7 +149,7 @@ instance Hashable FieldType
 -- * List
 
 data ListInfo = ListInfo
-  { listElements   :: [Embedding]
+  { listElements   :: Seq Embedding
   , listConstraint :: Maybe Thunk
   } deriving (Show, Eq)
 
@@ -195,25 +195,7 @@ data Type
 
 
 --------------------------------------------------------------------------------
--- * Reference
-
-type Path = Seq PathElem
-
--- | Not all fields have a valid absolute path; we must keep track of how we
--- reached a field by storing each individual step. Embeddings do not get a path
--- item since their resulting value will be inlined.
---
--- For string fields, we use an arbitrary int that corresponds to a key in the
--- block's fields map. This allows us to point to fields even if their name
--- contains an unevaluated thunk. We do the same thing for constraints.
-data PathElem
-  = PathField FieldLabel
-  | PathLetClause FieldLabel
-  | PathStringField Int
-  | PathConstraint Int
-  deriving (Show, Eq, Generic)
-
-instance Hashable PathElem
+-- * Path
 
 -- | To keep track of references, we change every identifier we encounter to be
 -- an absolute path instead of a relative path: consider the following example:
@@ -242,6 +224,32 @@ instance Hashable PathElem
 --
 -- hence keeping an absolute reference to @a.b@ when generating the thunk.
 type Reference = Path
+
+type Path = Seq PathElem
+
+-- | We use absolute paths in a lot of places. Before evaluation, they are used
+-- to keep track of references, so that we can do substitution. During the
+-- evaluation, they are used to identify cycles, and to deduplicate effort.
+--
+-- Some of those path elements do not make sense in a resolved document, such as
+-- embedding-related paths. We also keep two different kinds of paths for lists,
+-- since element at index 2 of an unresolved list might resolve to two elements,
+-- changing all indices in the result. Since lists are declared as embeddings,
+-- we reuse the embedding path elements for list declarations.
+--
+-- String fields and constraints only make sense before being resolved. For
+-- them, we use an arbitrary int, guaranteed to be unique within a given struct.
+data PathElem
+  = PathField FieldLabel
+  | PathLetClause FieldLabel
+  | PathEmbedding Int
+  | PathEmbeddingClause Int
+  | PathEmbeddingThunk
+  | PathStringField Int
+  | PathConstraint Int
+  deriving (Show, Eq, Generic)
+
+instance Hashable PathElem
 
 
 --------------------------------------------------------------------------------

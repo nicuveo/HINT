@@ -14,8 +14,7 @@ import Lang.Cue.Location
 
 data Panic
   = UnreachableCode
-  | DemoteBaseValue
-  | AmbiguousParse
+  | PopEmptyPath
 
 unreachable :: HasCallStack => a
 unreachable = withFrozenCallStack $ panic UnreachableCode
@@ -23,8 +22,7 @@ unreachable = withFrozenCallStack $ panic UnreachableCode
 panic :: HasCallStack => Panic -> a
 panic p = withFrozenCallStack $ error $ pp $ case p of
   UnreachableCode -> "001: reached supposedly unreachable code"
-  DemoteBaseValue -> "002: attempted to demote an already-demoted value"
-  AmbiguousParse  -> "003: parsing was ambiguous and returned more than one result"
+  PopEmptyPath    -> "002: attempted to pop an already empty path"
   where
     pp m = "PANIC\n\
            \hint as encountered an unrecoverable internal error.\n\

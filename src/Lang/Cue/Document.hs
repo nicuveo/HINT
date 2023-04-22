@@ -110,7 +110,7 @@ data EndPoint o
 -- * Struct
 
 data StructInfo' f = StructInfo
-  { structFields     :: HashMap I.FieldLabel (Field' f)
+  { structFields     :: HashMap Text (Field' f)
   , structAttributes :: I.Attributes
   }
 

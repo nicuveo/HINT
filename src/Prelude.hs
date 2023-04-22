@@ -20,6 +20,8 @@ module Prelude
   , fmap2
   , (<<$>>)
   , (<<&>>)
+    -- * lens
+  , noopLens
   ) where
 
 
@@ -66,6 +68,7 @@ import "base" Prelude                  as P hiding (lookup)
 --------------------------------------------------------------------------------
 -- Internal imports
 
+import Control.Lens                    hiding (Empty, (...))
 import Control.Monad.Validate
 import Control.Monad.Validate.Internal
 import Data.Sequence                   (Seq (..))
@@ -123,6 +126,13 @@ infixl 4 <<$>>
 (<<&>>) :: (Functor f, Functor g) => f (g a) -> (a -> b) -> f (g b)
 (<<&>>) = flip fmap2
 infixl 1 <<&>>
+
+
+--------------------------------------------------------------------------------
+-- Lens
+
+noopLens :: Lens s s (Maybe a) (Maybe b)
+noopLens = lens (const Nothing) const
 
 
 --------------------------------------------------------------------------------
