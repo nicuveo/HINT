@@ -91,6 +91,7 @@ dependencies:
   - scientific
   - text
   - transformers
+  - transformers-base
   - unordered-containers
 
 library:

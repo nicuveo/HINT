@@ -76,13 +76,13 @@ instance FFunctor Document' where
 --   * @e@ is the type of values in the Equality checks
 --   * @o@ is the type of values in the bounds (Ordering)
 --   * @r@ is the type of values in the Regex clauses
-data Bound e o r = Bound
+data Bound o r = Bound
   { -- | lower bound (if any)
-    _above       :: EndPoint o
+    _above       :: Endpoint o
   , -- | upper bound (if any)
-    _below       :: EndPoint o
+    _below       :: Endpoint o
   , -- | excluded values
-    _different   :: [e]
+    _different   :: [o]
   , -- | regex match
     _matchesAll  :: [r]
   , -- | regex non-match
@@ -90,16 +90,16 @@ data Bound e o r = Bound
   }
   deriving (Show, Eq)
 
-unbound :: Bound e o r
+unbound :: Bound o r
 unbound = Bound Open Open [] [] []
 
-type IntegerBound = Bound Integer    Integer    Void
-type FloatBound   = Bound Scientific Scientific Void
-type StringBound  = Bound Text       Text       Text
-type BytesBound   = Bound Text       Text       Void
+type IntegerBound = Bound Integer    Void
+type FloatBound   = Bound Scientific Void
+type StringBound  = Bound Text       Text
+type BytesBound   = Bound Text       Void
 
 -- | Bound for an ordered value.
-data EndPoint o
+data Endpoint o
   = Open
   | Inclusive o
   | Exclusive o
@@ -144,7 +144,7 @@ instance FFunctor Field' where
 
 makeLenses ''Bound
 makePrisms ''Document'
-makePrisms ''EndPoint
+makePrisms ''Endpoint
 
 instance HasDocs (HKD f (Document' f)) f => Plated (Document' f) where
   plate f = \case

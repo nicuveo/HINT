@@ -98,6 +98,7 @@ library
     , scientific
     , text
     , transformers
+    , transformers-base
     , unordered-containers
   default-language: GHC2021
 
@@ -185,6 +186,7 @@ executable evalexpr
     , scientific
     , text
     , transformers
+    , transformers-base
     , unordered-containers
   default-language: GHC2021
 
@@ -272,5 +274,6 @@ test-suite tests
     , tasty-quickcheck
     , text
     , transformers
+    , transformers-base
     , unordered-containers
   default-language: GHC2021

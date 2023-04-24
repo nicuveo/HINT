@@ -8,6 +8,9 @@ module Prelude
     module P
     -- * custom operators
   , (...)
+    -- * list helpers
+  , paddedZip
+  , paddedZipWith
     -- * maybe helpers
   , onNothing
   , onNothingM
@@ -80,6 +83,19 @@ import Data.Sequence                   (Seq (..))
 (...) :: (c -> d) -> (a -> b -> c) -> (a -> b -> d)
 f ... g = \x y -> f (g x y)
 infixr 8 ...
+
+
+--------------------------------------------------------------------------------
+-- List helpers
+
+paddedZip :: a -> b -> [a] -> [b] -> [(a, b)]
+paddedZip = paddedZipWith (,)
+
+paddedZipWith :: (a -> b -> c) -> a -> b -> [a] -> [b] -> [c]
+paddedZipWith _ _ _    []     []  = []
+paddedZipWith f a _    []     bs  = zipWith f (repeat a) bs
+paddedZipWith f _ b    as     []  = zipWith f as (repeat b)
+paddedZipWith f a b (x:as) (y:bs) = f x y : paddedZipWith f a b as bs
 
 
 --------------------------------------------------------------------------------

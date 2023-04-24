@@ -1,16 +1,24 @@
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
-{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE RecursiveDo     #-}
 
-module Lang.Cue.Eval
+module Lang.Cue.Eval where
+
+{-
   ( inlineAliases
   , eval
   ) where
+-}
 
 import "this" Prelude
 
-import Control.Lens                    hiding (Empty, List, below)
+import Control.Lens                    hiding (Empty, List, below, op)
+import Control.Monad.Base
+import Control.Monad.ST
 import Data.HashMap.Strict             qualified as M
-import Data.Sequence                   as S
+import Data.List                       (nub)
+import Data.Sequence                   as S hiding (length)
+import Data.STRef
 import Data.Text                       qualified as T
 import Data.Text.Encoding              (encodeUtf8)
 import Regex.RE2                       qualified as RE2
@@ -26,103 +34,77 @@ import Lang.Cue.Location
 --------------------------------------------------------------------------------
 -- * Evaluation monad
 
+data ThunkCacheNode s = ThunkCacheNode
+  { nodeThunk  :: Thunk
+  , evalStatus :: Bool
+  , subPaths   :: HashMap PathElem (STRef s (ThunkCacheNode s))
+  }
+
+type ThunkPtr s = STRef s (ThunkCacheNode s)
+
 {-
-
--- | Wrapper around Document in the Document tree, to add evaluation
--- information.
-data WithEvalStatus d = WithEvalStatus
-  { esStatus :: EvalStatus
-  , esDoc    :: d
-  }
-
 data EvalStatus
-  = Unevaluated
-  |
-
--- | Contains all internal information used during the evaluation phase.
-data Context = Context
-  { _result :: Document
-  }
-
-data Context s = Context
-  { _currentPath    :: Path
-  , _visibleFields  :: HashMap FieldLabel (NonEmpty Path)
-    _visibleAliases :: HashMap FieldLabel (NonEmpty Bool)
-  }
-
-makeLenses ''Context
-
-
-newtype Eval a = Eval { runEval :: a }
-  deriving (Functor, Applicative, Monad) via Identity
-
-eval :: Expression -> Value
-eval = runEval . evalExpression
+  = -- | no evaluation has happened; attempting to access a field will fail with
+    -- 'CannotBeEvaluatedYet'
+    NotEvaluatedYet
+  | -- | embeddings have been processed, and the result has been unified with
+    -- the declarations: accessing a field should be allowed for the purpose of
+    -- evaluating string fields i guess?
+  | EmbeddingsResolved
+  | AllFieldsUnified
 -}
+
+data EvalContext s = EvalContext
+  { cacheRoot   :: STRef s (ThunkCacheNode s)
+  , currentEval :: [Path]
+  }
 
 data EvalError
   = CannotBeEvaluatedYet
   | EvaluationFailed (Seq BottomSource)
 
-type Eval = Either EvalError
+newtype Eval s a = Eval
+  { runEval :: ExceptT EvalError (StateT (EvalContext s) (ST s)) a
+  }
+  deriving
+    ( Functor
+    , Applicative
+    , Monad
+    , MonadState (EvalContext s)
+    , MonadError EvalError
+    , MonadFix
+    )
+
+instance MonadBase (ST s) (Eval s) where
+  liftBase = Eval . liftBase
 
 eval :: Thunk -> Either Errors Document
-eval t = translateError $ evalToNF `orRecoverWith` t
+eval t = translateError $ runST go
   where
+    go :: forall s. ST s (Either EvalError Document)
+    go =  do
+      root <- newSTRef $ ThunkCacheNode @s t False M.empty
+      let ctx = EvalContext root []
+      flip evalStateT ctx $ runExceptT $ runEval $ fullyEval root
     translateError = \case
-      Left (EvaluationFailed b) -> Left $ fmap (withLocation (Location "" [] 0) . BottomError) b
-      Left CannotBeEvaluatedYet -> Right $ Thunk t
-      Right d                   -> Right d
+      Left (EvaluationFailed b) ->
+        Left  $ fmap (withLocation (Location "" [] 0) . BottomError) b
+      Left CannotBeEvaluatedYet ->
+        Right $ Thunk t
+      Right d ->
+        Right d
 
 
 --------------------------------------------------------------------------------
 -- * Evaluation
 
-evalToWHNF :: Thunk -> Eval Document
-evalToWHNF t = case t of
-  Disjunction        d -> evalDisjunction d
-  Unification        _ -> undefined
-  LogicalOr        l r -> join $ evalOr   <$> evalToNF l <*> evalToNF r
-  LogicalAnd       l r -> join $ evalAnd  <$> evalToNF l <*> evalToNF r
-  Equal            l r -> join $ evalEq   <$> evalToNF l <*> evalToNF r
-  NotEqual         l r -> join $ evalNEq  <$> evalToNF l <*> evalToNF r
-  Match            l r -> join $ evalRE   <$> evalToNF l <*> evalToNF r
-  NotMatch         l r -> join $ evalNRE  <$> evalToNF l <*> evalToNF r
-  LessThan         l r -> join $ evalLT   <$> evalToNF l <*> evalToNF r
-  LessOrEqual      l r -> join $ evalLE   <$> evalToNF l <*> evalToNF r
-  GreaterThan      l r -> join $ evalGT   <$> evalToNF l <*> evalToNF r
-  GreaterOrEqual   l r -> join $ evalGE   <$> evalToNF l <*> evalToNF r
-  Addition         l r -> join $ evalAdd  <$> evalToNF l <*> evalToNF r
-  Subtraction      l r -> join $ evalSub  <$> evalToNF l <*> evalToNF r
-  Multiplication   l r -> join $ evalMul  <$> evalToNF l <*> evalToNF r
-  Division         l r -> join $ evalDiv  <$> evalToNF l <*> evalToNF r
-  NumId              n -> evalPlus =<< evalToNF n
-  Negate             n -> evalNeg  =<< evalToNF n
-  LogicalNot         n -> evalNot  =<< evalToNF n
-  IsNotEqualTo       n -> evalUNE  =<< evalToNF n
-  Matches            n -> evalURE  =<< evalToNF n
-  Doesn'tMatch       n -> evalUNRE =<< evalToNF n
-  IsLessThan         n -> evalULT  =<< evalToNF n
-  IsLessOrEqualTo    n -> evalULE  =<< evalToNF n
-  IsGreaterThan      n -> evalUGT  =<< evalToNF n
-  IsGreaterOrEqualTo n -> evalUGE  =<< evalToNF n
-  Select _ _           -> undefined
-  Index  _ _           -> undefined
-  Slice  _ _ _         -> undefined
-  Call _fun _args      -> undefined
-  I.List  ListInfo {}  -> undefined -- traverse evalEmbedding listElements
-  Block _              -> undefined
-  Interpolation _ _ts  -> undefined -- T.concat <$> traverse evalToString ts
-  Ref _absolutePath    -> undefined
-  Alias _p _l          -> error "unevaluated alias"
-  Leaf  a              -> pure $ Atom  a
-  I.Type c             -> pure $ D.Type c
-  Func  _              -> pure $ Thunk t
-  Top                  -> pure $ Thunk t
-  Bottom               -> report ArisedFromLiteral
+fullyEval :: ThunkPtr s -> Eval s Document
+fullyEval ptr = do
+  ThunkCacheNode {..} <- liftBase $ readSTRef ptr
+  resolve `orRecoverWith` nodeThunk
 
-evalToNF :: Thunk -> Eval Document
-evalToNF = evalToWHNF >=> \case
+resolve :: Thunk -> Eval s Document
+resolve = evalToNF >=> \case
   Disjoint v d -> case (v, d) of
     (      Empty,       Empty) -> unreachable
     (x :<| Empty,       Empty) -> pure x
@@ -131,12 +113,54 @@ evalToNF = evalToWHNF >=> \case
     (_          , _          ) -> throwError CannotBeEvaluatedYet
   d -> pure d
 
+evalToNF :: Thunk -> Eval s Document
+evalToNF t = case t of
+  Disjunction        d  -> evalDisjunction d
+  Unification        u  -> evalUnification u
+  LogicalOr        l r  -> join $ evalOr   <$> resolve l <*> resolve r
+  LogicalAnd       l r  -> join $ evalAnd  <$> resolve l <*> resolve r
+  Equal            l r  -> join $ evalEq   <$> resolve l <*> resolve r
+  NotEqual         l r  -> join $ evalNEq  <$> resolve l <*> resolve r
+  Match            l r  -> join $ evalRE   <$> resolve l <*> resolve r
+  NotMatch         l r  -> join $ evalNRE  <$> resolve l <*> resolve r
+  LessThan         l r  -> join $ evalLT   <$> resolve l <*> resolve r
+  LessOrEqual      l r  -> join $ evalLE   <$> resolve l <*> resolve r
+  GreaterThan      l r  -> join $ evalGT   <$> resolve l <*> resolve r
+  GreaterOrEqual   l r  -> join $ evalGE   <$> resolve l <*> resolve r
+  Addition         l r  -> join $ evalAdd  <$> resolve l <*> resolve r
+  Subtraction      l r  -> join $ evalSub  <$> resolve l <*> resolve r
+  Multiplication   l r  -> join $ evalMul  <$> resolve l <*> resolve r
+  Division         l r  -> join $ evalDiv  <$> resolve l <*> resolve r
+  NumId              n  -> evalPlus =<< resolve n
+  Negate             n  -> evalNeg  =<< resolve n
+  LogicalNot         n  -> evalNot  =<< resolve n
+  IsNotEqualTo       n  -> evalUNE  =<< resolve n
+  Matches            n  -> evalURE  =<< resolve n
+  Doesn'tMatch       n  -> evalUNRE =<< resolve n
+  IsLessThan         n  -> evalULT  =<< resolve n
+  IsLessOrEqualTo    n  -> evalULE  =<< resolve n
+  IsGreaterThan      n  -> evalUGT  =<< resolve n
+  IsGreaterOrEqualTo n  -> evalUGE  =<< resolve n
+  Select _ _            -> undefined
+  Index  _ _            -> undefined
+  Slice  _ _ _          -> undefined
+  Call _fun _args       -> undefined
+  I.List  ListInfo {..} -> D.List <$> evalList listElements
+  Block _b              -> undefined
+  Interpolation _ _ts   -> undefined -- T.concat <$> traverse evalToString ts
+  Ref _absolutePath     -> undefined
+  Alias _p _l           -> error "unevaluated alias"
+  Leaf a                -> pure $ Atom  a
+  I.Type c              -> pure $ D.Type c
+  Func  _               -> pure $ Thunk t
+  Top                   -> pure $ Thunk t
+  Bottom                -> report ArisedFromLiteral
 
-evalDisjunction :: Seq (Bool, Thunk) -> Eval Document
+evalDisjunction :: Seq (Bool, Thunk) -> Eval s Document
 evalDisjunction disj = mdo
   (result, starred, errors, marked) <-
     disj & flip foldlM (S.empty, S.empty, S.empty, False) \(r, s, e, m) (star, thunk) ->
-      catchBottom (evalToWHNF thunk) <&> \case
+      catchBottom (evalToNF thunk) <&> \case
         Left  err -> (r, s, e <> err, m || star)
         Right doc ->
           let (val, def) = case doc of
@@ -150,6 +174,166 @@ evalDisjunction disj = mdo
   where
     mergeable :: Document -> Document -> Bool
     mergeable = (==) `on` (Mergeable . abstract Mergeable)
+
+evalUnification :: Seq Thunk -> Eval s Document
+evalUnification = go I.Top
+  where
+    go l Empty     = evalToNF l
+    go l (r :<| u) = case (l, r) of
+      (_, Unification x)     -> go l (x <> u)
+      (_, Select        {})  -> undefined -- retrieveThunk r >>= \e -> go l (e :<| u)
+      (_, Index         {})  -> undefined -- retrieveThunk r >>= \e -> go l (e :<| u)
+      (_, Slice         {})  -> undefined -- retrieveThunk r >>= \e -> go l (e :<| u)
+      (_, Ref           {})  -> undefined -- retrieveThunk r >>= \e -> go l (e :<| u)
+      (_, Call          {})  -> undefined
+      (_, Alias         {})  -> error "unevaluated alias"         -- FIXME
+      (_, Interpolation {})  -> error "unevaluated interpolation" -- FIXME
+      (Top,    _)            -> go r u
+      (Bottom, _)            -> report ArisedFromLiteral
+      (_, Top   )            -> go l u
+      (_, Bottom)            -> report ArisedFromLiteral
+      (Disjunction d, t)     -> go (Disjunction $ d <<&>> \e -> Unification [e, t]) u
+      (t, Disjunction d)     -> go (Disjunction $ d <<&>> \e -> Unification [t, e]) u
+      (I.List l1, I.List l2) -> unifyLists  l1 l2 >>= flip go u
+      (Block  b1, Block  b2) -> unifyBlocks b1 b2 >>= flip go u
+      _                      -> join $ unify <$> evalToNF l <*> go r u
+
+unifyLists :: ListInfo -> ListInfo -> Eval s Thunk
+unifyLists (ListInfo e1 c1) (ListInfo e2 c2) = do
+  l1 <- concat <$> traverse retrieveEmbeddingThunks e1
+  l2 <- concat <$> traverse retrieveEmbeddingThunks e2
+  let n1 = length l1
+      n2 = length l2
+  when (n1 < n2 && isNothing c1) $ error "list length mismatch"
+  when (n2 < n1 && isNothing c2) $ error "list length mismatch"
+  let c3 = case (c1, c2) of
+        (Nothing, Nothing) -> Nothing
+        (Nothing, Just t2) -> Just t2
+        (Just t1, Nothing) -> Just t1
+        (Just t1, Just t2) -> Just $ Unification [t1, t2]
+      l3 = paddedZipWith merge (fromMaybe Top c1) (fromMaybe Top c2) l1 l2
+  pure $ I.List $ ListInfo (fromList l3) c3
+  where
+    merge t1 t2 = InlineThunk $ Unification [t1, t2]
+
+unifyBlocks _ _ = undefined
+
+unify d1 d2 = case (d1, d2) of
+  (Atom   a1, Atom   a2) | a1 == a2        -> pure d1
+  (Atom   a1, NotNull  ) | a1 /= Null      -> pure d1
+  (NotNull,   Atom   a2) | a2 /= Null      -> pure d2
+  (NotNull,   NotNull  )                   -> pure NotNull
+
+  (D.Type IntegerType, D.Type IntegerType) -> pure d1
+  (D.Type IntegerType, D.Type  NumberType) -> pure d1
+  (D.Type  NumberType, D.Type IntegerType) -> pure d2
+  (D.Type   FloatType, D.Type   FloatType) -> pure d1
+  (D.Type   FloatType, D.Type  NumberType) -> pure d1
+  (D.Type  NumberType, D.Type   FloatType) -> pure d2
+  (D.Type  NumberType, D.Type  NumberType) -> pure d1
+  (D.Type  StringType, D.Type  StringType) -> pure d1
+  (D.Type   BytesType, D.Type   BytesType) -> pure d1
+  (D.Type BooleanType, D.Type BooleanType) -> pure d1
+
+  (D.Type IntegerType, IntegerBound _)     -> pure d2
+  (D.Type  NumberType, IntegerBound _)     -> pure d2
+  (D.Type   FloatType,   FloatBound _)     -> pure d2
+  (D.Type  NumberType,   FloatBound _)     -> pure d2
+  (D.Type  StringType,  StringBound _)     -> pure d2
+  (D.Type   BytesType,   BytesBound _)     -> pure d2
+  (IntegerBound _, D.Type IntegerType)     -> pure d1
+  (IntegerBound _, D.Type  NumberType)     -> pure d1
+  (  FloatBound _, D.Type   FloatType)     -> pure d1
+  (  FloatBound _, D.Type  NumberType)     -> pure d1
+  ( StringBound _, D.Type  StringType)     -> pure d1
+  (  BytesBound _, D.Type   BytesType)     -> pure d1
+
+  (Atom (Integer x), IntegerBound b)       -> d1 <$ checkI x b
+  (Atom (Float   x), FloatBound   b)       -> d1 <$ checkF x b
+  (Atom (String  x), StringBound  b)       -> d1 <$ checkS x b
+  (Atom (Bytes   x), BytesBound   b)       -> d1 <$ checkB x b
+  (IntegerBound b, Atom (Integer x))       -> d2 <$ checkI x b
+  (FloatBound   b, Atom (Float   x))       -> d2 <$ checkF x b
+  (StringBound  b, Atom (String  x))       -> d2 <$ checkS x b
+  (BytesBound   b, Atom (Bytes   x))       -> d2 <$ checkB x b
+
+  (Atom (Integer _), D.Type IntegerType)   -> pure d1
+  (Atom (Integer _), D.Type  NumberType)   -> pure d1
+  (Atom (Float   _), D.Type   FloatType)   -> pure d1
+  (Atom (Float   _), D.Type  NumberType)   -> pure d1
+  (Atom (String  _), D.Type  StringType)   -> pure d1
+  (Atom (Bytes   _), D.Type   BytesType)   -> pure d1
+  (D.Type IntegerType, Atom (Integer _))   -> pure d2
+  (D.Type  NumberType, Atom (Integer _))   -> pure d2
+  (D.Type   FloatType, Atom (Float   _))   -> pure d2
+  (D.Type  NumberType, Atom (Float   _))   -> pure d2
+  (D.Type  StringType, Atom (String  _))   -> pure d2
+  (D.Type   BytesType, Atom (Bytes   _))   -> pure d2
+
+  (IntegerBound i1, IntegerBound i2)       -> mergeBound Integer IntegerBound i1 i2
+  (FloatBound   f1, FloatBound   f2)       -> mergeBound Float   FloatBound   f1 f2
+  (StringBound  s1, StringBound  s2)       -> mergeBound String  StringBound  s1 s2
+  (BytesBound   b1, BytesBound   b2)       -> mergeBound Bytes   BytesBound   b1 b2
+
+  _                                        -> nope
+  where
+    nope = undefined -- conflicting d1 d2
+
+    checkI = checkWith unreachable
+    checkF = checkWith unreachable
+    checkS = checkWith reMatch
+    checkB = checkWith unreachable
+
+    checkWith matchR x Bound {..} = do
+      case _above of
+        Open        -> pure ()
+        Inclusive a -> when (x <  a) $ undefined
+        Exclusive a -> when (x <= a) $ undefined
+      case _below of
+        Open        -> pure ()
+        Inclusive b -> when (x >  b) $ undefined
+        Exclusive b -> when (x >= b) $ undefined
+      ar <- traverse (matchR x) _matchesAll
+      nr <- traverse (matchR x) _matchesNone
+      unless (and ar) $ undefined
+      when   (or  nr) $ undefined
+      when (any (x ==) _different) $ undefined
+
+    mergeBound mkAtom mkBound b1 b2 = do
+      let a = mergeEndpoint (>=) (b1 ^. above, b2 ^. above)
+          b = mergeEndpoint (<=) (b1 ^. below, b2 ^. below)
+          base = unbound
+            & different   .~ nub (_different   b1 <> _different   b2)
+            & matchesAll  .~ nub (_matchesAll  b1 <> _matchesAll  b2)
+            & matchesNone .~ nub (_matchesNone b1 <> _matchesNone b2)
+      case (a, b) of
+        (Inclusive x, Inclusive y)
+          | x >  y -> undefined -- FIXME
+          | x == y -> pure $ Atom $ mkAtom x
+        (Exclusive x, Exclusive y)
+          | x >= y -> undefined -- FIXME
+        (Inclusive x, Exclusive y)
+          | x >= y -> undefined -- FIXME
+        (Exclusive x, Inclusive y)
+          | x >= y -> undefined -- FIXME
+        _ ->
+          pure $ mkBound $ base & above .~ a & below .~ b
+
+    mergeEndpoint op = \case
+      (Open, e) -> e
+      (e, Open) -> e
+      (Inclusive a, Inclusive b) -> if a `op` b then Inclusive a else Inclusive b
+      (Exclusive a, Exclusive b) -> if a `op` b then Exclusive a else Exclusive b
+      (Inclusive i, Exclusive e) -> if e `op` i then Exclusive e else Inclusive i
+      (Exclusive e, Inclusive i) -> if e `op` i then Exclusive e else Inclusive i
+
+evalList :: Seq Embedding -> Eval s (Seq Document)
+evalList = traverse evalToNF . join <=< traverse retrieveEmbeddingThunks
+
+retrieveEmbeddingThunks :: Applicative t => Embedding -> Eval s (t Thunk)
+retrieveEmbeddingThunks = \case
+  InlineThunk      t -> pure $ pure t
+  Comprehension cs b -> undefined cs b
 
 evalOr = curry \case
   (Atom (Boolean l), Atom (Boolean r)) -> pure $ Atom $ Boolean $ l || r
@@ -520,21 +704,21 @@ errorOnCycle path name = void . transformM \case
 --------------------------------------------------------------------------------
 -- * Error handling
 
-report :: BottomSource -> Eval a
+report :: BottomSource -> Eval s a
 report = throwError . EvaluationFailed . pure
 
-typeMismatch :: String -> Document -> Eval a
+typeMismatch :: String -> Document -> Eval s a
 typeMismatch = undefined
 
-typeMismatch2  :: String -> Document -> Document -> Eval a
+typeMismatch2  :: String -> Document -> Document -> Eval s a
 typeMismatch2 = undefined
 
-orRecoverWith :: (Thunk -> Eval Document) -> Thunk -> Eval Document
+orRecoverWith :: (Thunk -> Eval s Document) -> Thunk -> Eval s Document
 orRecoverWith action thunk = action thunk `catchError` \case
   CannotBeEvaluatedYet -> pure $ Thunk thunk
   err                  -> throwError err
 
-catchBottom :: Eval Document -> Eval (Either (Seq BottomSource) Document)
+catchBottom :: Eval s Document -> Eval s (Either (Seq BottomSource) Document)
 catchBottom action = fmap Right action `catchError` \case
   EvaluationFailed errs -> pure $ Left errs
   err                   -> throwError err
@@ -543,7 +727,7 @@ catchBottom action = fmap Right action `catchError` \case
 --------------------------------------------------------------------------------
 -- * Helpers
 
-reMatch :: Text -> Text -> Eval Bool
+reMatch :: Text -> Text -> Eval s Bool
 reMatch str pat = do
   -- RE2 expects UTF-8 by default, and that's fine
   compiled <- RE2.compile (encodeUtf8 pat)
