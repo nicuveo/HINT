@@ -184,8 +184,8 @@ evalToWHNF t = case t of
   IsGreaterThan      n -> evalUGT  =<< resolve n
   IsGreaterOrEqualTo n -> evalUGE  =<< resolve n
   Select _ _           -> undefined
-  Index  _ _           -> undefined
-  Slice  _ _ _         -> undefined
+  Index  v i           -> join $ evalIndex <$> resolve v <*> resolve i
+  Slice  v b e         -> join $ evalSlice <$> resolve v <*> traverse resolve b <*> traverse resolve e
   Call _fun _args      -> undefined
   I.List li            -> evalList li
   Block s              -> evalStruct s
@@ -488,6 +488,36 @@ evalStruct BlockInfo {..} = do
 
 --------------------------------------------------------------------------------
 -- * Primary
+
+evalIndex :: Value -> Value -> Eval s Value
+evalIndex = curry \case
+  (V.List l, Atom (Integer i)) ->
+    S.lookup (fromInteger i) (_lValues l)
+      `onNothing` report undefined
+  (Struct s, Atom (String  i)) -> do
+    fmap _fValue $
+      M.lookup (I.FieldLabel i Regular) (_sFields s)
+        `onNothing` report undefined
+  (a, b) -> typeMismatch2 "[]" a b
+
+evalSlice :: Value -> Maybe Value -> Maybe Value -> Eval s Value
+evalSlice v b e = case v of
+  V.List (V.ListInfo l _) -> do
+    let n = S.length l
+    sb <- resolveInt b 0
+    se <- resolveInt e n
+    when (sb > se) $ report undefined
+    when (sb <  0) $ report undefined
+    when (se >  n) $ report undefined
+    let res = S.take (se - sb) $ S.drop sb l
+    pure $ V.List $ V.ListInfo res Empty
+  _ -> report undefined
+  where
+    resolveInt x d = case x of
+      Just (Atom (Integer i)) -> pure (fromInteger i)
+      Nothing                 -> pure d
+      _                       -> report undefined
+
 
 {-
 retrieveIndexThunk :: Thunk -> Thunk -> Eval s Thunk

@@ -610,10 +610,10 @@ translatePrimaryExpr = \case
   PrimaryIndex pe e -> Index
     <$> translatePrimaryExpr pe
     <*> translateExpr e
-  PrimarySlice pe (e1, e2) -> Slice
+  PrimarySlice pe e1 e2 -> Slice
     <$> translatePrimaryExpr pe
-    <*> translateExpr e1
-    <*> translateExpr e2
+    <*> traverse translateExpr e1
+    <*> traverse translateExpr e2
   PrimaryCall pe es -> Call
     <$> translatePrimaryExpr pe
     <*> traverse translateExpr es

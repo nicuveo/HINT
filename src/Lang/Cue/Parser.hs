@@ -234,9 +234,9 @@ fullGrammar = mdo
     pure $ PrimaryIndex prim ind
 
   primSlice <- inlineRule do
-    prim <- primaryExpression
-    sli  <- slice
-    pure $ PrimarySlice prim sli
+    prim   <- primaryExpression
+    (b, e) <- slice
+    pure $ PrimarySlice prim b e
 
   primCall <- inlineRule do
     prim <- primaryExpression
@@ -253,9 +253,9 @@ fullGrammar = mdo
     brackets expression
 
   slice <- rule "slice" $ brackets do
-    low  <- expression
+    low  <- optional expression
     operator OperatorColon
-    high <- expression
+    high <- optional expression
     pure (low, high)
 
   arguments <- rule "arguments" $

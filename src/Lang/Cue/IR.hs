@@ -64,7 +64,7 @@ data Thunk
   -- primary
   | Select Thunk FieldLabel
   | Index  Thunk Thunk
-  | Slice  Thunk Thunk Thunk
+  | Slice  Thunk (Maybe Thunk) (Maybe Thunk)
   | Call   Thunk [Thunk]
 
   -- groups
@@ -340,7 +340,7 @@ instance Plated Thunk where
     IsGreaterOrEqualTo t -> IsGreaterOrEqualTo <$> f t
     Select         t   l -> Select             <$> f t <*> pure l
     Index          t   i -> Index              <$> f t <*> f i
-    Slice          t i j -> Slice              <$> f t <*> f i <*> f j
+    Slice          t i j -> Slice              <$> f t <*> traverse f i <*> traverse f j
     Call           t   a -> Call               <$> f t <*> traverse f a
     Interpolation    i l -> Interpolation i    <$> traverse f l
     List               l -> List               <$> thunks f l
@@ -383,7 +383,7 @@ instance IndexedPlated (Seq PathElem) Thunk where
     IsGreaterOrEqualTo t -> IsGreaterOrEqualTo <$> f t
     Select         t   l -> Select             <$> f t <*> pure l
     Index          t   i -> Index              <$> f t <*> f i
-    Slice          t i j -> Slice              <$> f t <*> f i <*> f j
+    Slice          t i j -> Slice              <$> f t <*> traverse f i <*> traverse f j
     Call           t   a -> Call               <$> f t <*> traverse f a
     Interpolation    i l -> Interpolation i    <$> traverse f l
     List               l -> List               <$> indexedThunks path g l

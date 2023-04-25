@@ -120,7 +120,7 @@ data PrimaryExpression
   = PrimaryOperand  Operand
   | PrimarySelector PrimaryExpression (Either Identifier Text)
   | PrimaryIndex    PrimaryExpression Expression
-  | PrimarySlice    PrimaryExpression (Expression, Expression)
+  | PrimarySlice    PrimaryExpression (Maybe Expression) (Maybe Expression)
   | PrimaryCall     PrimaryExpression [Expression]
   deriving (Show, Eq)
 
