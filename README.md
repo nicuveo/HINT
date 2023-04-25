@@ -109,3 +109,6 @@ c: {
   @foo(bar)
 }
 ```
+  - [ ] the reference claims that default values are propagated through list indexing, but that doesn't seem to be true?
+  - [ ] the reference doesn't document partial slices of the form `[:]`, `[a:]`, `[:a]`
+  - [ ] the reference doesn't document slices at all actually?
