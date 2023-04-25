@@ -31,8 +31,6 @@ import Lang.Cue.IR           as I
 import Lang.Cue.Location
 import Lang.Cue.Value        as V
 
-import Debug.Trace
-
 
 --------------------------------------------------------------------------------
 -- * Evaluation monad
@@ -132,6 +130,7 @@ evalToNF = \case
   Thunk t      -> (evalToWHNF >=> evalToNF) `orRecoverWith` t
   v            -> plate evalToNF v
   where
+    -- TODO: deduplicate this
     resolveDisjunction dv dd = do
       (vs, es, u) <- foldlM step (Empty, Empty, False) dv
       (ds,  _, _) <- foldlM step (Empty, Empty, False) dd
@@ -144,13 +143,8 @@ evalToNF = \case
              (_     , Empty ) -> pure $ Disjoint rv []
              (_     , Lone x) -> pure x
              _                -> pure $ Disjoint [] rd
-    step (vs, es, u) w = do
-      traceM "DISTRIBUTE: EVAL TO NF {"
-      traceShowM w
-      x <- fmap Right (evalToNF w) `catchError` (pure . Left)
-      traceShowM x
-      traceM "}"
-      pure case x of
+    step (vs, es, u) w =
+      fmap Right (evalToNF w) `catchError` (pure . Left) <&> \case
         Left CannotBeEvaluatedYet -> (vs, es, True)
         Left (EvaluationFailed e) -> (vs, es <> e, u)
         Right v                   -> (vs :|> v, es, u)
@@ -391,6 +385,7 @@ unify d1 d2 = case (d1, d2) of
 unifies v1 v2 = fmap Just (unify v1 v2) `catchError` const (pure Nothing)
 
 distribute v1 d1 v2 d2 = do
+  -- TODO: deduplicate
   (vs, es, u) <- foldlM step (Empty, Empty, False) $ liftA2 (,) v1 v2
   (ds,  _, _) <- foldlM step (Empty, Empty, False) $ liftA2 (,) d1 d2
   when (S.null vs) $
@@ -400,13 +395,7 @@ distribute v1 d1 v2 d2 = do
     (v, d)          -> Disjoint v d
   where
     step (vs, es, u) (w1, w2) = do
-      traceM "DISTRIBUTE: UNIFY {"
-      traceShowM w1
-      traceShowM w2
-      x <- fmap Right (unify w1 w2) `catchError` (pure . Left)
-      traceShowM x
-      traceM "}"
-      pure case x of
+      fmap Right (unify w1 w2) `catchError` (pure . Left) <&> \case
         Left CannotBeEvaluatedYet -> (vs, es, True)
         Left (EvaluationFailed e) -> (vs, es <> e, u)
         Right v                   -> (vs :|> v, es, u)
