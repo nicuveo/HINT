@@ -180,7 +180,7 @@ evalToWHNF t = case t of
   Select _ _           -> undefined
   Index  v i           -> join $ evalIndex <$> resolve v <*> resolve i
   Slice  v b e         -> join $ evalSlice <$> resolve v <*> traverse resolve b <*> traverse resolve e
-  Call _fun _args      -> undefined
+  Call c a             -> evalCall c a
   I.List li            -> evalList li
   Block s              -> evalStruct s
   Interpolation _ _ts  -> undefined -- T.concat <$> traverse evalToString ts
@@ -507,6 +507,10 @@ evalSlice v b e = case v of
       Nothing                 -> pure d
       _                       -> report undefined
 
+evalCall :: Thunk -> [Thunk] -> Eval s Value
+evalCall fun args = case fun of
+  Func (Function _ f) -> f =<< traverse evalToWHNF args
+  _                   -> report undefined
 
 {-
 retrieveIndexThunk :: Thunk -> Thunk -> Eval s Thunk

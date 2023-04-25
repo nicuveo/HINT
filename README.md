@@ -10,6 +10,7 @@ TODO:
     - [x] cleanup project config
     - [ ] write documentation
     - [ ] decide on a license
+    - [ ] split the code in sub-directory to isolate boot files
   - Binary
     - [ ] decide on a name
     - [ ] decide on a list of operations

@@ -9,6 +9,7 @@ import                Data.HashMap.Strict             qualified as M
 import                Data.Scientific
 
 import                Lang.Cue.AST                    qualified as A
+import {-# SOURCE #-} Lang.Cue.Eval                   qualified as E
 import                Lang.Cue.Internal.IndexedPlated
 import                Lang.Cue.Tokens                 qualified as T
 import {-# SOURCE #-} Lang.Cue.Value                  qualified as V
@@ -276,7 +277,7 @@ data Clause
 -- part of the resulting document.
 data Function = Function
   { functionName :: Text
-  , functionBody :: [V.Value] -> Either () V.Value
+  , functionBody :: forall s. [V.Value] -> E.Eval s V.Value
   }
 
 instance Show Function where
