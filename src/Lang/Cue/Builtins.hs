@@ -6,9 +6,9 @@ import Data.HashMap.Strict qualified as M
 import Data.List           qualified as L
 import Data.Text           qualified as T
 
-import Lang.Cue.Document   as D
 import Lang.Cue.Error
 import Lang.Cue.IR         as I
+import Lang.Cue.Value      as V
 
 
 --------------------------------------------------------------------------------
@@ -21,8 +21,8 @@ len = Function "len" \args -> do
     -- can resolve
     [Atom (String s)] -> pure $ Atom $ Integer $ toInteger $ T.length s
     [Atom (Bytes  s)] -> pure $ Atom $ Integer $ toInteger $ T.length s
-    [Struct s]        -> pure $ Atom $ Integer $ toInteger $ M.size $ structFields s
-    [D.List l]        -> pure $ Atom $ Integer $ toInteger $ L.length l
+    [Struct s]        -> pure $ Atom $ Integer $ toInteger $ M.size   $ _sFields s
+    [V.List l]        -> pure $ Atom $ Integer $ toInteger $ L.length $ _lValues l
 
     -- not evaluated enough, but potentially valid, bail out
     [Thunk       _]   -> Left ()
@@ -37,7 +37,7 @@ len = Function "len" \args -> do
 --------------------------------------------------------------------------------
 -- * Helpers
 
-validateArgsLength :: Int -> [Document] -> Either () ()
+validateArgsLength :: Int -> [Value] -> Either () ()
 validateArgsLength n args =
   when (n /= length args) $
     Left ()

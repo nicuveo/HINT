@@ -247,7 +247,7 @@ translateBlock decls = do
         { _biAliases      = M.empty
         , _biIdentFields  = M.empty
         , _biStringFields = M.empty
-        , _biConstraints  = M.empty
+        , _biConstraints  = Seq.empty
         , _biEmbeddings   = M.empty
         , _biAttributes   = M.empty
         , _biClosed       = False
@@ -494,7 +494,7 @@ translateDeclaration scope (fields, aliases, builder) (declIndex, decl) = case d
             refute $ error "alias defined more than once" -- FIXME
           pure l
         let
-          pathItem   = PathConstraint declIndex
+          pathItem   = PathConstraint
           newBuilder = do
             block <- builder
             -- evaluate the condition
@@ -509,7 +509,7 @@ translateDeclaration scope (fields, aliases, builder) (declIndex, decl) = case d
               pure result
             -- TODO: this isn't enough representation, it's missing attributes and
             -- aliases
-            pure $ block & biConstraints . at declIndex ?~ (condThunk, exprThunk)
+            pure $ block & biConstraints %~ (:|> (condThunk, exprThunk))
         pure (fields, aliases, newBuilder)
 
 -- | Recursively translates a comprehension clause.

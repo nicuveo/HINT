@@ -25,9 +25,9 @@ library
   exposed-modules:
       Lang.Cue.AST
       Lang.Cue.Builtins
-      Lang.Cue.Document
       Lang.Cue.Error
       Lang.Cue.Eval
+      Lang.Cue.Inline
       Lang.Cue.Internal.HKD
       Lang.Cue.Internal.IndexedPlated
       Lang.Cue.Internal.NoShow
@@ -38,6 +38,7 @@ library
       Lang.Cue.Printer
       Lang.Cue.Tokens
       Lang.Cue.Translate
+      Lang.Cue.Value
   other-modules:
       Prelude
   hs-source-dirs:
@@ -107,9 +108,9 @@ executable evalexpr
   other-modules:
       Lang.Cue.AST
       Lang.Cue.Builtins
-      Lang.Cue.Document
       Lang.Cue.Error
       Lang.Cue.Eval
+      Lang.Cue.Inline
       Lang.Cue.Internal.HKD
       Lang.Cue.Internal.IndexedPlated
       Lang.Cue.Internal.NoShow
@@ -120,6 +121,7 @@ executable evalexpr
       Lang.Cue.Printer
       Lang.Cue.Tokens
       Lang.Cue.Translate
+      Lang.Cue.Value
       Prelude
       Paths_hint
   hs-source-dirs:
@@ -196,9 +198,9 @@ test-suite tests
   other-modules:
       Lang.Cue.AST
       Lang.Cue.Builtins
-      Lang.Cue.Document
       Lang.Cue.Error
       Lang.Cue.Eval
+      Lang.Cue.Inline
       Lang.Cue.Internal.HKD
       Lang.Cue.Internal.IndexedPlated
       Lang.Cue.Internal.NoShow
@@ -209,6 +211,7 @@ test-suite tests
       Lang.Cue.Printer
       Lang.Cue.Tokens
       Lang.Cue.Translate
+      Lang.Cue.Value
       Prelude
       Arbitrary
       Paths_hint

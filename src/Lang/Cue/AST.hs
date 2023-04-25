@@ -52,6 +52,13 @@ data Optional
   | Required
   deriving (Show, Eq)
 
+instance Semigroup Optional where
+  Optional <> o = o
+  _ <> _        = Required
+
+instance Monoid Optional where
+  mempty = Optional
+
 type LabelName = Text
 
 type Ellipsis = Maybe Expression

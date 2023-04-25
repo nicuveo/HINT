@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 -- | Internal module that re-exports the regular prelude, plus some
 -- common useful functions.
@@ -17,8 +18,11 @@ module Prelude
     -- * either helpers
   , onLeft
   , onLeftM
-    -- * sequence hepers
+    -- * sequence helpers
+  , Seq (.., Lone)
   , nubBy
+    -- * hashmap helpers
+  , unionWithM
     -- * nested fmaps
   , fmap2
   , (<<$>>)
@@ -74,6 +78,7 @@ import "base" Prelude                  as P hiding (lookup)
 import Control.Lens                    hiding (Empty, (...))
 import Control.Monad.Validate
 import Control.Monad.Validate.Internal
+import Data.HashMap.Strict             qualified as M
 import Data.Sequence                   (Seq (..))
 
 
@@ -121,12 +126,33 @@ onLeftM a f = a >>= flip onLeft f
 --------------------------------------------------------------------------------
 -- Sequence helpers
 
+pattern Lone :: a -> Seq a
+pattern Lone x = x :<| Empty
+
 nubBy :: (a -> a -> Bool) -> Seq a -> Seq a
 nubBy eq = foldl' go Empty
   where
     go res x
       | any (eq x) res = res
       | otherwise      = res :|> x
+
+
+--------------------------------------------------------------------------------
+-- HashMap helpers
+
+unionWithM ::
+  (Monad m, Hashable k) =>
+  (v -> v -> m v) ->
+  HashMap k v ->
+  HashMap k v ->
+  m (HashMap k v)
+unionWithM f m1 m2 = foldM step m1 (M.toList m2)
+  where
+    step m (k, new) = case M.lookup k m of
+      Nothing -> pure $ M.insert k new m
+      Just old -> do
+        combined <- f new old
+        pure $ M.insert k combined m
 
 
 --------------------------------------------------------------------------------

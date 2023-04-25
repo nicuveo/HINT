@@ -7,12 +7,11 @@ import                "this" Prelude
 import                Control.Lens                    hiding (List)
 import                Data.HashMap.Strict             qualified as M
 import                Data.Scientific
-import                Data.Sequence
 
 import                Lang.Cue.AST                    qualified as A
-import {-# SOURCE #-} Lang.Cue.Document               qualified as D
 import                Lang.Cue.Internal.IndexedPlated
 import                Lang.Cue.Tokens                 qualified as T
+import {-# SOURCE #-} Lang.Cue.Value                  qualified as V
 
 
 --------------------------------------------------------------------------------
@@ -110,8 +109,8 @@ data BlockInfo = BlockInfo
   { _biAliases      :: HashMap FieldLabel (PathElem, Thunk)
   , _biIdentFields  :: HashMap FieldLabel (Seq Field)
   , _biStringFields :: HashMap Int (Thunk, Field)
-  , _biConstraints  :: HashMap Int (Thunk, Thunk)
   , _biEmbeddings   :: HashMap Int Embedding
+  , _biConstraints  :: Seq (Thunk, Thunk)
   , _biAttributes   :: Attributes
   , _biClosed       :: Bool
   } deriving (Show, Eq)
@@ -246,7 +245,7 @@ data PathElem
   | PathEmbeddingClause Int
   | PathEmbeddingThunk
   | PathStringField Int
-  | PathConstraint Int
+  | PathConstraint
   deriving (Show, Eq, Generic)
 
 instance Hashable PathElem
@@ -277,7 +276,7 @@ data Clause
 -- part of the resulting document.
 data Function = Function
   { functionName :: Text
-  , functionBody :: [D.Document] -> Either () D.Document
+  , functionBody :: [V.Value] -> Either () V.Value
   }
 
 instance Show Function where
@@ -436,16 +435,16 @@ instance HasThunks BlockInfo where
     <$> (traverse . traverse) f _biAliases
     <*> thunks f _biIdentFields
     <*> thunks f _biStringFields
-    <*> thunks f _biConstraints
     <*> thunks f _biEmbeddings
+    <*> thunks f _biConstraints
     <*> pure _biAttributes
     <*> pure _biClosed
   indexedThunks p f BlockInfo {..} = BlockInfo
     <$> traverse (\(e, t) -> (e,) <$> indexedThunks (p :|> e) f t) _biAliases
     <*> M.traverseWithKey (\l -> indexedThunks (p :|> PathField       l) f) _biIdentFields
     <*> M.traverseWithKey (\i -> indexedThunks (p :|> PathStringField i) f) _biStringFields
-    <*> M.traverseWithKey (\i -> indexedThunks (p :|> PathConstraint  i) f) _biConstraints
     <*> indexedThunks p f _biEmbeddings
+    <*> traverse (indexedThunks (p :|> PathConstraint) f) _biConstraints
     <*> pure _biAttributes
     <*> pure _biClosed
 
