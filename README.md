@@ -35,7 +35,7 @@ Questions to ask to the CUE community:
   - [ ] playground discards attributes before package name
   - [ ] why must aliases be used? the reference doesn't mention it
   - [ ] the reference doesn't document reference renaming
-  - [ ] why can't let clause recursively refer to themselves?
+  - [x] why can't let clause recursively refer to themselves?
   - [ ] the reference claims that an embed can be an aliased expression, but the playground rejects it?
   - [ ] the playground treats identifiers in comprehensions as fields, not aliases? is it because they don't need to be used?
   - [ ] the reference claims that aliases to optional fields are only visible within the field, but the playground disagrees

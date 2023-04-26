@@ -21,6 +21,7 @@ import Data.Sequence         as S
 import Data.STRef
 import Data.Text             qualified as T
 import Data.Text.Encoding    (encodeUtf8)
+import GHC.Stack
 import Regex.RE2             qualified as RE2
 
 import Lang.Cue.AST          qualified as A
@@ -177,9 +178,9 @@ evalToWHNF t = case t of
   IsLessOrEqualTo    n -> evalULE  =<< resolve n
   IsGreaterThan      n -> evalUGT  =<< resolve n
   IsGreaterOrEqualTo n -> evalUGE  =<< resolve n
-  Select _ _           -> undefined
-  Index  v i           -> join $ evalIndex <$> resolve v <*> resolve i
-  Slice  v b e         -> join $ evalSlice <$> resolve v <*> traverse resolve b <*> traverse resolve e
+  Select v s           -> join $ evalSelect <$> evalToWHNF v <*> pure s
+  Index  v i           -> join $ evalIndex  <$> evalToWHNF v <*> resolve i
+  Slice  v b e         -> join $ evalSlice  <$> evalToWHNF v <*> traverse resolve b <*> traverse resolve e
   Call c a             -> evalCall c a
   I.List li            -> evalList li
   Block s              -> evalStruct s
@@ -478,15 +479,32 @@ evalStruct BlockInfo {..} = do
 --------------------------------------------------------------------------------
 -- * Primary
 
+evalSelect :: Value -> FieldLabel -> Eval s Value
+evalSelect v label = case v of
+  Struct s -> do
+    when (labelType label /= Regular) $
+      throwError CannotBeEvaluatedYet
+    fieldInfo <- M.lookup label (_sFields s)
+      `onNothing` throwError CannotBeEvaluatedYet
+    case _fValue fieldInfo of
+      Thunk t -> evalToWHNF t
+      other   -> pure other
+  w -> typeMismatch "." w
+
 evalIndex :: Value -> Value -> Eval s Value
 evalIndex = curry \case
-  (V.List l, Atom (Integer i)) ->
-    S.lookup (fromInteger i) (_lValues l)
+  (V.List l, Atom (Integer i)) -> do
+    r <- S.lookup (fromInteger i) (_lValues l)
       `onNothing` report undefined
+    case r of
+      Thunk t -> evalToWHNF t
+      other   -> pure other
   (Struct s, Atom (String  i)) -> do
-    fmap _fValue $
-      M.lookup (I.FieldLabel i Regular) (_sFields s)
-        `onNothing` report undefined
+    fieldInfo <- M.lookup (I.FieldLabel i Regular) (_sFields s)
+      `onNothing` report undefined
+    case _fValue fieldInfo of
+      Thunk t -> evalToWHNF t
+      other   -> pure other
   (a, b) -> typeMismatch2 "[]" a b
 
 evalSlice :: Value -> Maybe Value -> Maybe Value -> Eval s Value
@@ -760,7 +778,7 @@ evalUGE = \case
 report :: BottomSource -> Eval s a
 report = throwError . EvaluationFailed . pure
 
-typeMismatch :: String -> Value -> Eval s a
+typeMismatch :: HasCallStack => String -> Value -> Eval s a
 typeMismatch = undefined
 
 typeMismatch2  :: String -> Value -> Value -> Eval s a

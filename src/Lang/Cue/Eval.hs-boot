@@ -7,7 +7,6 @@ import                Data.STRef
 
 import                Lang.Cue.Error
 import {-# SOURCE #-} Lang.Cue.IR
-import {-# SOURCE #-} Lang.Cue.Value
 
 
 data ThunkCacheNode s = ThunkCacheNode
@@ -32,5 +31,3 @@ newtype Eval s a = Eval
   }
 
 report :: BottomSource -> Eval s a
-typeMismatch :: String -> Value -> Eval s a
-typeMismatch2  :: String -> Value -> Value -> Eval s a
