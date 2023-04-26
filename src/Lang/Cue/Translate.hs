@@ -223,14 +223,14 @@ resolveBuiltin = getIdentifier >>> pure. \case
   "bytes"   -> Just $ Type BytesType
 
   -- functions
-  "len"   -> Just $ Func F.len
-  "close" -> Just $ Func undefined
-  "and"   -> Just $ Func undefined
-  "or"    -> Just $ Func undefined
-  "div"   -> Just $ Func undefined
-  "mod"   -> Just $ Func undefined
-  "quot"  -> Just $ Func undefined
-  "rem"   -> Just $ Func undefined
+  "len"   -> Just $ Func F.lenFunc
+  "close" -> Just $ Func F.closeFunc
+  "and"   -> Just $ Func F.andFunc
+  "or"    -> Just $ Func F.orFunc
+  "div"   -> Just $ Func F.divFunc
+  "mod"   -> Just $ Func F.modFunc
+  "quot"  -> Just $ Func F.quotFunc
+  "rem"   -> Just $ Func F.remFunc
 
   -- misc
   "null" -> Just $ Leaf Null
