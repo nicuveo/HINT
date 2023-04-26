@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE RecursiveDo     #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Lang.Cue.Eval where
 
@@ -12,53 +13,43 @@ module Lang.Cue.Eval where
 
 import "this" Prelude
 
-import Control.Lens          hiding (Empty, List, below, op, re)
-import Control.Monad.Base
-import Control.Monad.ST
-import Data.HashMap.Strict   qualified as M
-import Data.List             (nub)
-import Data.Sequence         as S
-import Data.STRef
-import Data.Text             qualified as T
-import Data.Text.Encoding    (encodeUtf8)
+import Control.Lens                    hiding (Empty, List, below, op, re, (|>))
+import Data.HashMap.Strict             qualified as M
+import Data.List                       (nub)
+import Data.Sequence                   as S
+import Data.Text                       qualified as T
+import Data.Text.Encoding              (encodeUtf8)
 import GHC.Stack
-import Regex.RE2             qualified as RE2
+import Regex.RE2                       qualified as RE2
 
-import Lang.Cue.AST          qualified as A
+import Lang.Cue.AST                    qualified as A
 import Lang.Cue.Error
 import Lang.Cue.Inline
 import Lang.Cue.Internal.HKD
-import Lang.Cue.IR           as I
+import Lang.Cue.Internal.IndexedPlated
+import Lang.Cue.IR                     as I
 import Lang.Cue.Location
-import Lang.Cue.Value        as V
+import Lang.Cue.Value                  as V
 
 
 --------------------------------------------------------------------------------
 -- * Evaluation monad
 
-data ThunkCacheNode s = ThunkCacheNode
-  { nodeThunk  :: Thunk
-  , evalStatus :: Bool
-  , subPaths   :: HashMap PathElem (STRef s (ThunkCacheNode s))
+newtype Eval a = Eval
+  { runEval :: StateT Scope (Except EvalError) a
   }
+  deriving
+    ( Functor
+    , Applicative
+    , Monad
+    , MonadState Scope
+    , MonadError EvalError
+    , MonadFix
+    )
 
-type ThunkPtr s = STRef s (ThunkCacheNode s)
-
-{-
-data EvalStatus
-  = -- | no evaluation has happened; attempting to access a field will fail with
-    -- 'CannotBeEvaluatedYet'
-    NotEvaluatedYet
-  | -- | embeddings have been processed, and the result has been unified with
-    -- the declarations: accessing a field should be allowed for the purpose of
-    -- evaluating string fields i guess?
-  | EmbeddingsResolved
-  | AllFieldsUnified
--}
-
-data EvalContext s = EvalContext
-  { cacheRoot   :: STRef s (ThunkCacheNode s)
-  , currentEval :: [Path]
+data Scope = Scope
+  { _currentPath :: Path
+  , _knownThunks :: HashMap Path Thunk
   }
 
 data EvalError
@@ -66,31 +57,17 @@ data EvalError
   | EvaluationFailed (Seq BottomSource)
   deriving Show
 
-newtype Eval s a = Eval
-  { runEval :: ExceptT EvalError (StateT (EvalContext s) (ST s)) a
-  }
-  deriving
-    ( Functor
-    , Applicative
-    , Monad
-    , MonadState (EvalContext s)
-    , MonadError EvalError
-    , MonadFix
-    )
-
-instance MonadBase (ST s) (Eval s) where
-  liftBase = Eval . liftBase
+makeLenses ''Scope
 
 eval :: Thunk -> Either Errors Value
 eval rootToken = do
   inlinedRoot <- inlineAliases rootToken
-  translateError inlinedRoot $ runST $ go inlinedRoot
+  evalToNF [] (Thunk inlinedRoot)
+    & runEval
+    & flip evalStateT (Scope [] mempty)
+    & runExcept
+    & translateError inlinedRoot
   where
-    go :: forall s. Thunk -> ST s (Either EvalError Value)
-    go t = do
-      root <- newSTRef $ ThunkCacheNode @s t False M.empty
-      let ctx = EvalContext root []
-      flip evalStateT ctx $ runExceptT $ runEval $ fullyEval root
     translateError t = \case
       Left (EvaluationFailed b) ->
         Left  $ fmap (withLocation (Location "" [] 0) . BottomError) b
@@ -99,25 +76,60 @@ eval rootToken = do
       Right d ->
         Right d
 
-debugRun :: forall a. (forall s. Eval s a) -> Either EvalError a
-debugRun x = runST $ e x
-  where
-    e :: forall s. Eval s a -> ST s (Either EvalError a)
-    e (Eval y) = flip evalStateT (EvalContext @s undefined []) $ runExceptT y
+debug :: Eval a -> Either EvalError a
+debug x = x
+  & runEval
+  & flip evalStateT (Scope [] mempty)
+  & runExcept
+
+
+--------------------------------------------------------------------------------
+-- * Scope manipulation
+
+-- | Pushes a new field on the current path for the duration of the given
+-- action. The field is popped back when the action terminates.
+--
+-- Given the way the evaluation monad is stacked, we don't need to use
+-- catch exceptions to ensure that the path is properly popped on the
+-- way back up: if a validation error happens, the state will resume
+-- to what it was before the call to 'catchError'.
+withPath :: HasCallStack => PathElem -> Eval a -> Eval a
+withPath label action = do
+  currentPath %= (|> label)
+  result <- action
+  currentPath %= \case
+    upperPath :|> _ -> upperPath
+    _               -> panic PopEmptyPath
+  pure result
+
+withAbsolutePath :: Path -> Eval a -> Eval a
+withAbsolutePath path action = do
+  oldPath <- use currentPath
+  currentPath .= path
+  result  <- action
+  currentPath .= oldPath
+  pure result
+
+registerThunk :: PathElem -> Thunk -> Eval ()
+registerThunk l t = do
+  p <- use currentPath
+  knownThunks . at (p :|> l) ?= t
+
+retrieveThunk :: Path -> Eval Thunk
+retrieveThunk originalPath = do
+  newPath <- use currentPath
+  thunk <- uses knownThunks (M.lookup originalPath)
+    `onNothingM` panic ThunkNotFound
+  pure $ substitutePaths originalPath newPath thunk
 
 
 --------------------------------------------------------------------------------
 -- * Evaluation
 
-fullyEval :: ThunkPtr s -> Eval s Value
-fullyEval ptr = do
-  ThunkCacheNode {..} <- liftBase $ readSTRef ptr
-  (evalToWHNF >=> evalToNF) `orRecoverWith` nodeThunk
-
-resolve :: Thunk -> Eval s Value
+resolve :: Thunk -> Eval Value
 resolve = evalToWHNF >=> collapse
 
-collapse :: Value -> Eval s Value
+collapse :: Value -> Eval Value
 collapse = \case
   Disjoint    Empty    Empty -> unreachable
   Disjoint (Lone x)    Empty -> pure x
@@ -126,12 +138,14 @@ collapse = \case
   Disjoint        _        _ -> throwError CannotBeEvaluatedYet
   d -> pure d
 
-evalToNF = \case
+evalToNF :: Path -> Value -> Eval Value
+evalToNF p = withAbsolutePath p . \case
   Disjoint v d -> resolveDisjunction v d
-  Thunk t      -> (evalToWHNF >=> evalToNF) `orRecoverWith` t
-  v            -> plate evalToNF v
+  Thunk t      -> (evalToWHNF >=> evalToNF p) `orRecoverWith` t
+  v            -> indexedPlate p (Indexed evalToNF) v
   where
     -- TODO: deduplicate this
+    resolveDisjunction :: Seq Value -> Seq Value -> Eval Value
     resolveDisjunction dv dd = do
       (vs, es, u) <- foldlM step (Empty, Empty, False) dv
       (ds,  _, _) <- foldlM step (Empty, Empty, False) dd
@@ -145,12 +159,12 @@ evalToNF = \case
              (_     , Lone x) -> pure x
              _                -> pure $ Disjoint [] rd
     step (vs, es, u) w =
-      fmap Right (evalToNF w) `catchError` (pure . Left) <&> \case
+      fmap Right (evalToNF p w) `catchError` (pure . Left) <&> \case
         Left CannotBeEvaluatedYet -> (vs, es, True)
         Left (EvaluationFailed e) -> (vs, es <> e, u)
         Right v                   -> (vs :|> v, es, u)
 
-evalToWHNF :: Thunk -> Eval s Value
+evalToWHNF :: Thunk -> Eval Value
 evalToWHNF t = case t of
   Disjunction        d -> evalDisjunction d
   Unification        u -> evalUnification u
@@ -185,8 +199,8 @@ evalToWHNF t = case t of
   I.List li            -> evalList li
   Block s              -> evalStruct s
   Interpolation _ _ts  -> undefined -- T.concat <$> traverse evalToString ts
-  Ref _absolutePath    -> undefined
-  Alias _p _l          -> error "unevaluated alias"
+  Ref path             -> evalRef path
+  Alias _ _            -> error "unevaluated alias"
   Leaf a               -> pure $ Atom  a
   I.Type c             -> pure $ V.Type c
   Func  _              -> pure $ Thunk t
@@ -197,7 +211,7 @@ evalToWHNF t = case t of
 --------------------------------------------------------------------------------
 -- * Disjunction
 
-evalDisjunction :: Seq (Bool, Thunk) -> Eval s Value
+evalDisjunction :: Seq (Bool, Thunk) -> Eval Value
 evalDisjunction disj = mdo
   (result, starred, errors, marked, hasUnevaluated) <-
     disj & flip foldlM (S.empty, S.empty, S.empty, False, False)
@@ -253,10 +267,10 @@ instance Eq (Mergeable (Value' Mergeable)) where
 --------------------------------------------------------------------------------
 -- * Unification
 
-evalUnification :: Seq Thunk -> Eval s Value
+evalUnification :: Seq Thunk -> Eval Value
 evalUnification = foldlM unify V.Top <=< traverse evalToWHNF
 
-unify :: Value -> Value -> Eval s Value
+unify :: Value -> Value -> Eval Value
 unify d1 d2 = case (d1, d2) of
   (Disjoint v1 s1, Disjoint v2 s2)                 -> distribute  v1   s1   v2   s2
   (Disjoint v1 s1,              _)                 -> distribute  v1   s1  [d2] [d2]
@@ -407,16 +421,23 @@ unifyLists (V.ListInfo l1 c1) (V.ListInfo l2 c2) = do
   when (n1 < n2 && S.null c1) $ error "list length mismatch"
   when (n2 < n1 && S.null c2) $ error "list length mismatch"
   let c3 = c1 <> c2
-  l3 <- go l1 l2
+  l3 <- go 0 l1 l2
   pure $ V.List $ V.ListInfo l3 c3
   where
-    go Empty      Empty      = pure Empty
-    go (x :<| xs) (y :<| ys) = (:<|) <$> unify x y <*> go xs ys
-    go xs         Empty      = traverse (flip (foldlM unify) c2) xs
-    go Empty      ys         = traverse (flip (foldrM unify) c1) ys
+    go !_ Empty Empty =
+      pure Empty
+    go i xs Empty =
+      xs & S.traverseWithIndex \j x -> withPath (PathEmbedding $ i + j) $ foldlM unify x c2
+    go i Empty ys =
+      ys & S.traverseWithIndex \j y -> withPath (PathEmbedding $ i + j) $ foldrM unify y c1
+    go i (x :<| xs) (y :<| ys) = do
+      e  <- withPath (PathEmbedding i) $ unify x y
+      es <- go (i + 1) xs ys
+      pure $ e :<| es
 
-unifyConstraints :: Seq (Value, Value) -> FieldLabel -> V.Field -> Eval s V.Field
+unifyConstraints :: Seq (Value, Value) -> FieldLabel -> V.Field -> Eval V.Field
 unifyConstraints constraints name f = do
+  -- TODO: NO! MUST SUBSTITUTE PATHS FIRST
   nf <- foldlM step (_fValue f) constraints
   pure f { _fValue = nf }
   where
@@ -427,15 +448,17 @@ unifyConstraints constraints name f = do
       Just  _ -> unify v expr
 
 unifyStructs s1 s2 = do
-  f1s <- M.traverseWithKey (unifyConstraints $ _sConstraints s2) (_sFields s1)
-  f2s <- M.traverseWithKey (unifyConstraints $ _sConstraints s1) (_sFields s2)
-  fs  <- unionWithM unifyFields f1s f2s
+  f1s <- _sFields s1 & M.traverseWithKey \label field ->
+    withPath (PathField label) $ unifyConstraints (_sConstraints s2) label field
+  f2s <- _sFields s2 & M.traverseWithKey \label field ->
+    withPath (PathField label) $ unifyConstraints (_sConstraints s1) label field
+  fs  <- unionWithKeyM unifyFields f1s f2s
   let cs = _sConstraints s1 <> _sConstraints s2
       as = _sAttributes  s1 <> _sAttributes  s2
       cl = _sClosed      s1 || _sClosed      s2 -- TODO: ?
   pure $ Struct $ StructInfo fs cs as cl
   where
-    unifyFields f1 f2 = V.Field
+    unifyFields label f1 f2 = withPath (PathField label) $ V.Field
       <$> unify (_fValue f1) (_fValue f2)
       <*> pure (_fOptional f1 <> _fOptional f2)
       <*> pure (M.unionWith (<>) (_fAttributes f1) (_fAttributes f2))
@@ -444,7 +467,7 @@ unifyStructs s1 s2 = do
 --------------------------------------------------------------------------------
 -- * List and embeddings
 
-evalList :: I.ListInfo -> Eval s Value
+evalList :: I.ListInfo -> Eval Value
 evalList I.ListInfo {..} = do
   ts <- traverse evalEmbeddingThunks listElements
   pure $ V.List $ V.ListInfo
@@ -452,7 +475,7 @@ evalList I.ListInfo {..} = do
     , _lDefault = fromList $ map Thunk $ toList listConstraint
     }
 
-evalEmbeddingThunks :: Applicative t => Embedding -> Eval s (t Thunk)
+evalEmbeddingThunks :: Applicative t => Embedding -> Eval (t Thunk)
 evalEmbeddingThunks = \case
   InlineThunk      t -> pure $ pure t
   Comprehension cs b -> undefined cs b
@@ -461,25 +484,37 @@ evalEmbeddingThunks = \case
 --------------------------------------------------------------------------------
 -- * Struct
 
-evalStruct :: BlockInfo -> Eval s Value
+evalStruct :: BlockInfo -> Eval Value
 evalStruct BlockInfo {..} = do
-  let fs = _biIdentFields <&> mergeFields (Empty, A.Optional, M.empty)
-      cs = fmap (both %~ Thunk) _biConstraints
+  let cs = fmap (both %~ Thunk) _biConstraints
+  fs <- sequence $ M.mapWithKey mergeFields _biIdentFields
   pure $ V.Struct $ StructInfo fs cs _biAttributes _biClosed
   where
-    mergeFields (ts, opt, atts) = \case
-      Empty -> V.Field (Thunk $ Unification ts) opt atts
-      I.Field {..} :<| fs ->
-        ( ts :|> fieldValue
-        , opt <> fieldOptional
-        , M.unionWith (<>) atts fieldAttributes
-        ) `mergeFields` fs
+    mergeFields label ts = do
+      let (unifiedThunks, opts, attrs) = foldl step (Empty, A.Optional, M.empty) ts
+      registerThunk (PathField label) $ Unification unifiedThunks
+      pure $ V.Field (Thunk $ Unification unifiedThunks) opts attrs
+    step (ts, opt, attrs) I.Field {..} =
+      ( ts :|> fieldValue
+      , opt <> fieldOptional
+      , M.unionWith (<>) attrs fieldAttributes
+      )
+
+
+--------------------------------------------------------------------------------
+-- * Ref
+
+evalRef :: Path -> Eval Value
+evalRef path = do
+  current <- use currentPath
+  when (path == current) $ report undefined
+  evalToWHNF =<< retrieveThunk path
 
 
 --------------------------------------------------------------------------------
 -- * Primary
 
-evalSelect :: Value -> FieldLabel -> Eval s Value
+evalSelect :: Value -> FieldLabel -> Eval Value
 evalSelect v label = case v of
   Struct s -> do
     when (labelType label /= Regular) $
@@ -491,7 +526,7 @@ evalSelect v label = case v of
       other   -> pure other
   w -> typeMismatch "." w
 
-evalIndex :: Value -> Value -> Eval s Value
+evalIndex :: Value -> Value -> Eval Value
 evalIndex = curry \case
   (V.List l, Atom (Integer i)) -> do
     r <- S.lookup (fromInteger i) (_lValues l)
@@ -507,7 +542,7 @@ evalIndex = curry \case
       other   -> pure other
   (a, b) -> typeMismatch2 "[]" a b
 
-evalSlice :: Value -> Maybe Value -> Maybe Value -> Eval s Value
+evalSlice :: Value -> Maybe Value -> Maybe Value -> Eval Value
 evalSlice v b e = case v of
   V.List (V.ListInfo l _) -> do
     let n = S.length l
@@ -525,13 +560,13 @@ evalSlice v b e = case v of
       Nothing                 -> pure d
       _                       -> report undefined
 
-evalCall :: Thunk -> [Thunk] -> Eval s Value
+evalCall :: Thunk -> [Thunk] -> Eval Value
 evalCall fun args = case fun of
   Func (Function _ f) -> f =<< traverse evalToWHNF args
   _                   -> report undefined
 
 {-
-retrieveIndexThunk :: Thunk -> Thunk -> Eval s Thunk
+retrieveIndexThunk :: Thunk -> Thunk -> Eval Thunk
 retrieveIndexThunk expr index = case expr of
   Disjunction d -> pure $ Disjunction $ d <&> (\(s, e) -> (s, Index e index))
   Unification u -> pure $ Unification $ u <&> (\e -> Index e index)
@@ -775,21 +810,21 @@ evalUGE = \case
 --------------------------------------------------------------------------------
 -- * Error handling
 
-report :: BottomSource -> Eval s a
+report :: BottomSource -> Eval a
 report = throwError . EvaluationFailed . pure
 
-typeMismatch :: HasCallStack => String -> Value -> Eval s a
+typeMismatch :: HasCallStack => String -> Value -> Eval a
 typeMismatch = undefined
 
-typeMismatch2  :: String -> Value -> Value -> Eval s a
+typeMismatch2  :: String -> Value -> Value -> Eval a
 typeMismatch2 = undefined
 
-orRecoverWith :: (Thunk -> Eval s Value) -> Thunk -> Eval s Value
+orRecoverWith :: (Thunk -> Eval Value) -> Thunk -> Eval Value
 orRecoverWith action thunk = action thunk `catchError` \case
   CannotBeEvaluatedYet -> pure $ Thunk thunk
   err                  -> throwError err
 
-catchBottom :: Eval s Value -> Eval s (Either (Seq BottomSource) Value)
+catchBottom :: Eval Value -> Eval (Either (Seq BottomSource) Value)
 catchBottom action = fmap Right action `catchError` \case
   EvaluationFailed errs -> pure $ Left errs
   err                   -> throwError err
@@ -798,7 +833,7 @@ catchBottom action = fmap Right action `catchError` \case
 --------------------------------------------------------------------------------
 -- * Helpers
 
-reMatch :: Text -> Text -> Eval s Bool
+reMatch :: Text -> Text -> Eval Bool
 reMatch str pat = do
   -- RE2 expects UTF-8 by default, and that's fine
   compiled <- RE2.compile (encodeUtf8 pat)

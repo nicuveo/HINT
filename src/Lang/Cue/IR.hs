@@ -277,7 +277,7 @@ data Clause
 -- part of the resulting document.
 data Function = Function
   { functionName :: Text
-  , functionBody :: forall s. [V.Value] -> E.Eval s V.Value
+  , functionBody :: [V.Value] -> E.Eval V.Value
   }
 
 instance Show Function where
@@ -403,33 +403,28 @@ class HasThunks a where
   thunks :: Traversal' a Thunk
   indexedThunks :: Path -> IndexedTraversal' Path a Thunk
 
+  default thunks :: (a ~ t x, Traversable t, HasThunks x) => Traversal' a Thunk
+  thunks = traverse . thunks
+  default indexedThunks :: (a ~ t x, Traversable t, HasThunks x) => Path -> IndexedTraversal' Path a Thunk
+  indexedThunks p = traverse . indexedThunks p
+
 instance HasThunks Thunk where
   thunks = id
   indexedThunks path fi = indexed fi path
 
 instance HasThunks a => HasThunks [a] where
-  thunks = traverse . thunks
-  indexedThunks p = traverse . indexedThunks p
 
 instance HasThunks a => HasThunks (Seq a) where
-  thunks = traverse . thunks
-  indexedThunks p = traverse . indexedThunks p
 
 instance HasThunks a => HasThunks (Maybe a) where
-  thunks = traverse . thunks
-  indexedThunks p = traverse . indexedThunks p
 
 instance HasThunks a => HasThunks (NonEmpty a) where
-  thunks = traverse . thunks
-  indexedThunks p = traverse . indexedThunks p
 
 instance HasThunks a => HasThunks (HashMap k a) where
-  thunks = traverse . thunks
-  indexedThunks p = traverse . indexedThunks p
 
 instance (HasThunks a, HasThunks b) => HasThunks (a, b) where
   thunks = beside thunks thunks
-  indexedThunks p = traverse . indexedThunks p
+  indexedThunks p = beside (indexedThunks p) (indexedThunks p)
 
 instance HasThunks BlockInfo where
   thunks f BlockInfo {..} = BlockInfo

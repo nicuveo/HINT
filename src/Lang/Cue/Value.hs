@@ -5,12 +5,15 @@ module Lang.Cue.Value where
 
 import "this" Prelude
 
-import Control.Lens          hiding (List)
+import Control.Lens                    hiding (List)
+import Data.HashMap.Strict             qualified as M
 import Data.Scientific
+import Data.Sequence                   qualified as S
 
-import Lang.Cue.AST          qualified as A
+import Lang.Cue.AST                    qualified as A
 import Lang.Cue.Internal.HKD
-import Lang.Cue.IR           qualified as I
+import Lang.Cue.Internal.IndexedPlated
+import Lang.Cue.IR                     qualified as I
 
 
 --------------------------------------------------------------------------------
@@ -177,13 +180,33 @@ instance HasValue (HKD f (Value' f)) f => Plated (Value' f) where
     List         l -> List     <$> values f l
     Struct       s -> Struct   <$> values f s
 
+instance HasValue (HKD f (Value' f)) f => IndexedPlated I.Path (Value' f) where
+  indexedPlate path g = \case
+    Top            -> pure Top
+    NotNull        -> pure NotNull
+    Atom         x -> pure $ Atom         x
+    Type         x -> pure $ Type         x
+    IntegerBound x -> pure $ IntegerBound x
+    FloatBound   x -> pure $ FloatBound   x
+    StringBound  x -> pure $ StringBound  x
+    BytesBound   x -> pure $ BytesBound   x
+    Thunk        x -> pure $ Thunk        x
+    Disjoint   l s -> Disjoint <$> indexedValues path g l <*> indexedValues path g s
+    List         l -> List     <$> indexedValues path g l
+    Struct       s -> Struct   <$> indexedValues path g s
+
 class HasValue a f | a -> f where
   values :: Traversal' a (Value' f)
+  indexedValues :: I.Path -> IndexedTraversal' I.Path a (Value' f)
+
   default values :: (a ~ t x, Traversable t, HasValue x f) => Traversal' a (Value' f)
   values = traverse . values
+  default indexedValues :: (a ~ t x, Traversable t, HasValue x f) => I.Path -> IndexedTraversal' I.Path a (Value' f)
+  indexedValues p = traverse . indexedValues p
 
 instance HasValue (Value' f) f where
   values = id
+  indexedValues path fi = indexed fi path
 
 instance HasValue a f => HasValue (Seq a) f
 
@@ -193,6 +216,9 @@ instance HasValue (HKD f (Value' f)) f => HasValue (ListInfo' f) f where
   values f (ListInfo {..}) = ListInfo
     <$> values f _lValues
     <*> pure _lDefault -- ON PURPOSE, WE IGNORE CONSTRAINTS
+  indexedValues path f (ListInfo {..}) = ListInfo
+    <$> S.traverseWithIndex (\i -> indexedValues (path :|> I.PathEmbedding i) f) _lValues
+    <*> pure _lDefault -- ON PURPOSE, WE IGNORE CONSTRAINTS
 
 instance HasValue (HKD f (Value' f)) f => HasValue (StructInfo' f) f where
   values f (StructInfo {..}) = StructInfo
@@ -200,9 +226,18 @@ instance HasValue (HKD f (Value' f)) f => HasValue (StructInfo' f) f where
     <*> pure _sConstraints -- ON PURPOSE, WE IGNORE CONSTRAINTS
     <*> pure _sAttributes
     <*> pure _sClosed
+  indexedValues path f (StructInfo {..}) = StructInfo
+    <$> M.traverseWithKey (\k -> indexedValues (path :|> I.PathField k) f) _sFields
+    <*> pure _sConstraints -- ON PURPOSE, WE IGNORE CONSTRAINTS
+    <*> pure _sAttributes
+    <*> pure _sClosed
 
 instance HasValue (HKD f (Value' f)) f => HasValue (Field' f) f where
   values f (Field fv o as) = Field
     <$> values f fv
+    <*> pure o
+    <*> pure as
+  indexedValues path f (Field fv o as) = Field
+    <$> indexedValues path f fv
     <*> pure o
     <*> pure as

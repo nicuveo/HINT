@@ -23,6 +23,7 @@ module Prelude
   , nubBy
     -- * hashmap helpers
   , unionWithM
+  , unionWithKeyM
     -- * nested fmaps
   , fmap2
   , (<<$>>)
@@ -146,12 +147,20 @@ unionWithM ::
   HashMap k v ->
   HashMap k v ->
   m (HashMap k v)
-unionWithM f m1 m2 = foldM step m1 (M.toList m2)
+unionWithM = unionWithKeyM . const
+
+unionWithKeyM ::
+  (Monad m, Hashable k) =>
+  (k -> v -> v -> m v) ->
+  HashMap k v ->
+  HashMap k v ->
+  m (HashMap k v)
+unionWithKeyM f m1 m2 = foldM step m1 (M.toList m2)
   where
     step m (k, new) = case M.lookup k m of
       Nothing -> pure $ M.insert k new m
       Just old -> do
-        combined <- f new old
+        combined <- f k new old
         pure $ M.insert k combined m
 
 

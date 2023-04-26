@@ -15,6 +15,7 @@ import Lang.Cue.Location
 data Panic
   = UnreachableCode
   | PopEmptyPath
+  | ThunkNotFound
 
 unreachable :: HasCallStack => a
 unreachable = withFrozenCallStack $ panic UnreachableCode
@@ -23,6 +24,7 @@ panic :: HasCallStack => Panic -> a
 panic p = withFrozenCallStack $ error $ pp $ case p of
   UnreachableCode -> "001: reached supposedly unreachable code"
   PopEmptyPath    -> "002: attempted to pop an already empty path"
+  ThunkNotFound   -> "003: failed to retrieve a known thunk"
   where
     pp m = "PANIC\n\
            \hint as encountered an unrecoverable internal error.\n\

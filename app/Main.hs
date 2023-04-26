@@ -47,7 +47,7 @@ evalLine (dropWhile isSpace -> l) = case l of
       "ast"    -> display ast
       "ir"     -> display ir
       "inline" -> display $ inlineAliases =<< ir
-      "whnf"   -> display $ ir >>= \x -> left undefined $ debugRun (evalToWHNF x)
+      "whnf"   -> display $ ir >>= \x -> left undefined $ debug (evalToWHNF x)
       _        -> usage
   _ -> display $ eval =<< translateExpression =<< parse expression "<interactive>" (T.pack l)
   where

@@ -59,7 +59,7 @@ remFunc  = division "rem"  rem
 --------------------------------------------------------------------------------
 -- * Helpers
 
-validateArgsLength :: Int -> [Value] -> Eval s ()
+validateArgsLength :: Int -> [Value] -> Eval ()
 validateArgsLength n args =
   when (n /= L.length args) $
     report undefined

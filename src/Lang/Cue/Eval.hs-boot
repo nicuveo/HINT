@@ -1,33 +1,15 @@
 module Lang.Cue.Eval where
 
-import                "this" Prelude
+import "this" Prelude
 
-import                Control.Monad.ST
-import                Data.STRef
-
-import                Lang.Cue.Error
-import {-# SOURCE #-} Lang.Cue.IR
+import Lang.Cue.Error
 
 
-data ThunkCacheNode s = ThunkCacheNode
-  { nodeThunk  :: Thunk
-  , evalStatus :: Bool
-  , subPaths   :: HashMap PathElem (STRef s (ThunkCacheNode s))
+newtype Eval a = Eval
+  { runEval :: StateT Scope (Except EvalError) a
   }
 
-type ThunkPtr s = STRef s (ThunkCacheNode s)
-
-data EvalContext s = EvalContext
-  { cacheRoot   :: STRef s (ThunkCacheNode s)
-  , currentEval :: [Path]
-  }
-
+data Scope
 data EvalError
-  = CannotBeEvaluatedYet
-  | EvaluationFailed (Seq BottomSource)
 
-newtype Eval s a = Eval
-  { runEval :: ExceptT EvalError (StateT (EvalContext s) (ST s)) a
-  }
-
-report :: BottomSource -> Eval s a
+report :: BottomSource -> Eval a
