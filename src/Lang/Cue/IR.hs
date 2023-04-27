@@ -113,7 +113,6 @@ data BlockInfo = BlockInfo
   , _biEmbeddings   :: HashMap Int Embedding
   , _biConstraints  :: Seq (Thunk, Thunk)
   , _biAttributes   :: Attributes
-  , _biClosed       :: Bool
   } deriving (Show, Eq)
 
 data Field = Field
@@ -247,6 +246,7 @@ data PathElem
   | PathEmbeddingThunk
   | PathStringField Int
   | PathConstraint
+  | PathConstraintAlias
   deriving (Show, Eq, Generic)
 
 instance Hashable PathElem
@@ -277,7 +277,7 @@ data Clause
 -- part of the resulting document.
 data Function = Function
   { functionName :: Text
-  , functionBody :: [V.Value] -> E.Eval V.Value
+  , functionBody :: [V.WHNFValue] -> E.Eval V.WHNFValue
   }
 
 instance Show Function where
@@ -434,7 +434,6 @@ instance HasThunks BlockInfo where
     <*> thunks f _biEmbeddings
     <*> thunks f _biConstraints
     <*> pure _biAttributes
-    <*> pure _biClosed
   indexedThunks p f BlockInfo {..} = BlockInfo
     <$> traverse (\(e, t) -> (e,) <$> indexedThunks (p :|> e) f t) _biAliases
     <*> M.traverseWithKey (\l -> indexedThunks (p :|> PathField       l) f) _biIdentFields
@@ -442,7 +441,6 @@ instance HasThunks BlockInfo where
     <*> indexedThunks p f _biEmbeddings
     <*> traverse (indexedThunks (p :|> PathConstraint) f) _biConstraints
     <*> pure _biAttributes
-    <*> pure _biClosed
 
 instance HasThunks Field where
   thunks f Field {..} = Field

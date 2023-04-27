@@ -250,7 +250,6 @@ translateBlock decls = do
         , _biConstraints  = Seq.empty
         , _biEmbeddings   = M.empty
         , _biAttributes   = M.empty
-        , _biClosed       = False
         }
   -- we traverse all the declarations; doing so, we collect all the fields and
   -- aliases to add to the current scope, and the monadic actions to run in the
@@ -641,12 +640,12 @@ translateLiteral = \case
 
 translateListLiteral :: A.ListLiteral -> Translation Thunk
 translateListLiteral = fmap List . \case
-  ClosedList es    -> ListInfo <$> traverseWithIndex go (Seq.fromList es) <*> pure Nothing
-  OpenList   es el -> ListInfo <$> traverseWithIndex go (Seq.fromList es) <*> case el of
+  ClosedList es    -> ListInfo <$> traverse go (Seq.fromList es) <*> pure Nothing
+  OpenList   es el -> ListInfo <$> traverse go (Seq.fromList es) <*> case el of
     Nothing -> pure $ Just Top
     Just e  -> Just <$> translateExpr e
   where
-    go i = withPath (PathEmbedding i) . \case
+    go = \case
       EmbeddedExpression AliasedExpression {..} -> do
         whenJust aeAlias $ const $
           refute $ error "alias in embed" -- FIXME

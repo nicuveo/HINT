@@ -6,7 +6,7 @@ import Lang.Cue.Error
 
 
 newtype Eval a = Eval
-  { runEval :: StateT Scope (Except EvalError) a
+  { runEval :: ReaderT Scope (Except EvalError) a
   }
 
 data Scope

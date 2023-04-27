@@ -23,8 +23,7 @@ import Lang.Cue.IR                     qualified as I
 data Value' f
   = Top
   | Atom         I.Atom
-  | List         (ListInfo' f)
-  | Struct       (StructInfo' f)
+  | Func         I.Function
   | NotNull
   | Type         I.Type
   | IntegerBound IntegerBound
@@ -32,9 +31,12 @@ data Value' f
   | StringBound  StringBound
   | BytesBound   BytesBound
   | Thunk        I.Thunk
+  | List         (ListInfo' f)
+  | Struct       (StructInfo' f)
   | Disjoint     (Seq (Value' f)) (Seq (Value' f))
 
-type Value = Value' Identity
+type Value     = Value' Identity
+type WHNFValue = Value' (Const I.Thunk)
 
 deriving instance Show (HKD f (Value' f)) => Show (Value' f)
 deriving instance Eq   (HKD f (Value' f)) => Eq   (Value' f)
@@ -44,6 +46,7 @@ instance FFunctor Value' where
     Top            -> Top
     NotNull        -> NotNull
     Atom         x -> Atom         x
+    Func         x -> Func         x
     Type         x -> Type         x
     IntegerBound x -> IntegerBound x
     FloatBound   x -> FloatBound   x
@@ -106,7 +109,8 @@ data ListInfo' f = ListInfo
   , _lDefault :: Seq (HKD f (Value' f))
   }
 
-type ListInfo = ListInfo' Identity
+type ListInfo     = ListInfo' Identity
+type WHNFListInfo = ListInfo' (Const I.Thunk)
 
 deriving instance Show (HKD f (Value' f)) => Show (ListInfo' f)
 deriving instance Eq   (HKD f (Value' f)) => Eq   (ListInfo' f)
@@ -119,13 +123,14 @@ instance FFunctor ListInfo' where
 
 data StructInfo' f = StructInfo
   { _sFields      :: HashMap I.FieldLabel (Field' f)
-  , _sConstraints :: Seq (HKD f (Value' f), HKD f (Value' f))
+  , _sConstraints :: Seq (Value' f, HKD f (Value' f))
   -- TODO: add string fields
   , _sAttributes  :: I.Attributes
   , _sClosed      :: Bool
   }
 
-type StructInfo = StructInfo' Identity
+type StructInfo     = StructInfo' Identity
+type WHNFStructInfo = StructInfo' (Const I.Thunk)
 
 deriving instance Show (HKD f (Value' f)) => Show (StructInfo' f)
 deriving instance Eq   (HKD f (Value' f)) => Eq   (StructInfo' f)
@@ -133,7 +138,7 @@ deriving instance Eq   (HKD f (Value' f)) => Eq   (StructInfo' f)
 instance FFunctor StructInfo' where
   ffmap f StructInfo {..} = StructInfo
     (fmap (ffmap f) _sFields)
-    (_sConstraints & traverse . both %~ ffrecur @Value' f)
+    (_sConstraints <&> \(key, val) -> (ffmap f key, ffrecur @Value' f val))
     _sAttributes
     _sClosed
 
@@ -144,7 +149,8 @@ data Field' f = Field
   , _fAttributes :: I.Attributes
   }
 
-type Field = Field' Identity
+type Field     = Field' Identity
+type WHNFField = Field' (Const I.Thunk)
 
 deriving instance Show (HKD f (Value' f)) => Show (Field' f)
 deriving instance Eq   (HKD f (Value' f)) => Eq   (Field' f)
@@ -170,6 +176,7 @@ instance HasValue (HKD f (Value' f)) f => Plated (Value' f) where
     Top            -> pure Top
     NotNull        -> pure NotNull
     Atom         x -> pure $ Atom         x
+    Func         x -> pure $ Func         x
     Type         x -> pure $ Type         x
     IntegerBound x -> pure $ IntegerBound x
     FloatBound   x -> pure $ FloatBound   x
@@ -185,6 +192,7 @@ instance HasValue (HKD f (Value' f)) f => IndexedPlated I.Path (Value' f) where
     Top            -> pure Top
     NotNull        -> pure NotNull
     Atom         x -> pure $ Atom         x
+    Func         x -> pure $ Func         x
     Type         x -> pure $ Type         x
     IntegerBound x -> pure $ IntegerBound x
     FloatBound   x -> pure $ FloatBound   x
