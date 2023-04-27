@@ -3,7 +3,7 @@
 {-# LANGUAGE RecursiveDo     #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Lang.Cue.Eval where
+module Lang.Cue.Stages.Eval where
 
 {-
   ( inlineAliases
@@ -13,21 +13,27 @@ module Lang.Cue.Eval where
 
 import "this" Prelude
 
-import Control.Lens          hiding (Empty, List, below, op, re, (|>))
-import Data.HashMap.Strict   qualified as M
-import Data.List             (nub)
-import Data.Sequence         as S
-import Data.Text             qualified as T
-import Data.Text.Encoding    (encodeUtf8)
-import Regex.RE2             qualified as RE2
+import Control.Lens                     hiding (Empty, List, below, op, re,
+                                         (|>))
+import Data.HashMap.Strict              qualified as M
+import Data.List                        (nub)
+import Data.Sequence                    as S
+import Data.Text                        qualified as T
+import Data.Text.Encoding               (encodeUtf8)
+import Regex.RE2                        qualified as RE2
 
-import Lang.Cue.AST          qualified as A
 import Lang.Cue.Error
-import Lang.Cue.Inline
 import Lang.Cue.Internal.HKD
-import Lang.Cue.IR           as I
 import Lang.Cue.Location
-import Lang.Cue.Value        as V
+import Lang.Cue.Representation.AST      qualified as A
+import Lang.Cue.Representation.Document qualified as D
+import Lang.Cue.Representation.IR       (Atom (..), BlockInfo (..),
+                                         Embedding (..), FieldLabel (..),
+                                         FieldType (..), Function (..), Path,
+                                         PathElem (..), Thunk, Type (..))
+import Lang.Cue.Representation.IR       qualified as I
+import Lang.Cue.Representation.Value    as V
+import Lang.Cue.Stages.Inline
 
 import Debug.Trace
 
@@ -60,10 +66,10 @@ data EvalError
 
 makeLenses ''Scope
 
-eval :: Thunk -> Either Errors Value
+eval :: Thunk -> Either Errors D.Document
 eval rootToken = do
   inlinedRoot <- inlineAliases rootToken
-  evalToNF (Thunk inlinedRoot)
+  evalThunk inlinedRoot
     & runEval
     & flip runReaderT (Scope [] mempty)
     & runExcept
@@ -73,7 +79,7 @@ eval rootToken = do
       Left (EvaluationFailed b) ->
         Left  $ fmap (withLocation (Location "" [] 0) . BottomError) b
       Left CannotBeEvaluatedYet ->
-        Right $ Thunk t
+        Right $ D.Unresolved $ D.Thunk t
       Right d ->
         Right d
 
@@ -109,10 +115,10 @@ retrieveThunk originalPath = do
 --------------------------------------------------------------------------------
 -- * Evaluation
 
-resolve :: Thunk -> Eval WHNFValue
+resolve :: Thunk -> Eval Value
 resolve = evalToWHNF >=> collapse
 
-collapse :: Value' f -> Eval (Value' f)
+collapse :: Value -> Eval Value
 collapse = \case
   Disjoint    Empty    Empty -> unreachable
   Disjoint (Lone x)    Empty -> pure x
@@ -121,70 +127,72 @@ collapse = \case
   Disjoint        _        _ -> throwError CannotBeEvaluatedYet
   d -> pure d
 
-evalToNF :: WHNFValue -> Eval Value
-evalToNF = \case
-  Disjoint v d   -> nfDisjunction v d
-  Struct s       -> nfStruct s
-  V.List l       -> nfList l
-  Thunk t        -> (evalToWHNF >=> evalToNF) `orRecoverWith` t
-  V.Top          -> pure V.Top
-  NotNull        -> pure NotNull
-  Atom         x -> pure $ Atom         x
-  V.Func       x -> pure $ V.Func       x
-  V.Type       x -> pure $ V.Type       x
-  IntegerBound x -> pure $ IntegerBound x
-  FloatBound   x -> pure $ FloatBound   x
-  StringBound  x -> pure $ StringBound  x
-  BytesBound   x -> pure $ BytesBound   x
+evalThunk :: Thunk -> Eval D.Document
+evalThunk t = (evalToWHNF >=> evalToNF) `orRecoverWith` t
 
-evalToWHNF :: Thunk -> Eval WHNFValue
+evalToWHNF :: Thunk -> Eval Value
 evalToWHNF t = case t of
-  Disjunction        d -> whnfDisjunction d
-  Unification        u -> evalUnification u
-  LogicalOr        l r -> join $ evalOr   <$> resolve l <*> resolve r
-  LogicalAnd       l r -> join $ evalAnd  <$> resolve l <*> resolve r
-  Equal            l r -> join $ evalEq   <$> resolve l <*> resolve r
-  NotEqual         l r -> join $ evalNEq  <$> resolve l <*> resolve r
-  Match            l r -> join $ evalRE   <$> resolve l <*> resolve r
-  NotMatch         l r -> join $ evalNRE  <$> resolve l <*> resolve r
-  LessThan         l r -> join $ evalLT   <$> resolve l <*> resolve r
-  LessOrEqual      l r -> join $ evalLE   <$> resolve l <*> resolve r
-  GreaterThan      l r -> join $ evalGT   <$> resolve l <*> resolve r
-  GreaterOrEqual   l r -> join $ evalGE   <$> resolve l <*> resolve r
-  Addition         l r -> join $ evalAdd  <$> resolve l <*> resolve r
-  Subtraction      l r -> join $ evalSub  <$> resolve l <*> resolve r
-  Multiplication   l r -> join $ evalMul  <$> resolve l <*> resolve r
-  Division         l r -> join $ evalDiv  <$> resolve l <*> resolve r
-  NumId              n -> evalPlus =<< resolve n
-  Negate             n -> evalNeg  =<< resolve n
-  LogicalNot         n -> evalNot  =<< resolve n
-  IsNotEqualTo       n -> evalUNE  =<< resolve n
-  Matches            n -> evalURE  =<< resolve n
-  Doesn'tMatch       n -> evalUNRE =<< resolve n
-  IsLessThan         n -> evalULT  =<< resolve n
-  IsLessOrEqualTo    n -> evalULE  =<< resolve n
-  IsGreaterThan      n -> evalUGT  =<< resolve n
-  IsGreaterOrEqualTo n -> evalUGE  =<< resolve n
-  Select v s           -> join $ evalSelect <$> evalToWHNF v <*> pure s
-  Index  v i           -> join $ evalIndex  <$> evalToWHNF v <*> resolve i
-  Slice  v b e         -> join $ evalSlice  <$> evalToWHNF v <*> traverse resolve b <*> traverse resolve e
-  Call c a             -> evalCall c a
-  I.List li            -> whnfList li
-  Block s              -> whnfStruct s
-  Interpolation _ _ts  -> undefined -- T.concat <$> traverse evalToString ts
-  Ref path             -> evalRef path
-  Alias _ _            -> error "unevaluated alias"
-  Leaf a               -> pure $ Atom a
-  I.Type c             -> pure $ V.Type c
-  I.Func f             -> pure $ V.Func f
-  I.Top                -> pure V.Top
-  Bottom               -> report ArisedFromLiteral
+  I.Disjunction        d -> whnfDisjunction d
+  I.Unification        u -> evalUnification u
+  I.LogicalOr        l r -> join $ evalOr   <$> resolve l <*> resolve r
+  I.LogicalAnd       l r -> join $ evalAnd  <$> resolve l <*> resolve r
+  I.Equal            l r -> join $ evalEq   <$> resolve l <*> resolve r
+  I.NotEqual         l r -> join $ evalNEq  <$> resolve l <*> resolve r
+  I.Match            l r -> join $ evalRE   <$> resolve l <*> resolve r
+  I.NotMatch         l r -> join $ evalNRE  <$> resolve l <*> resolve r
+  I.LessThan         l r -> join $ evalLT   <$> resolve l <*> resolve r
+  I.LessOrEqual      l r -> join $ evalLE   <$> resolve l <*> resolve r
+  I.GreaterThan      l r -> join $ evalGT   <$> resolve l <*> resolve r
+  I.GreaterOrEqual   l r -> join $ evalGE   <$> resolve l <*> resolve r
+  I.Addition         l r -> join $ evalAdd  <$> resolve l <*> resolve r
+  I.Subtraction      l r -> join $ evalSub  <$> resolve l <*> resolve r
+  I.Multiplication   l r -> join $ evalMul  <$> resolve l <*> resolve r
+  I.Division         l r -> join $ evalDiv  <$> resolve l <*> resolve r
+  I.NumId              n -> evalPlus =<< resolve n
+  I.Negate             n -> evalNeg  =<< resolve n
+  I.LogicalNot         n -> evalNot  =<< resolve n
+  I.IsNotEqualTo       n -> evalUNE  =<< resolve n
+  I.Matches            n -> evalURE  =<< resolve n
+  I.Doesn'tMatch       n -> evalUNRE =<< resolve n
+  I.IsLessThan         n -> evalULT  =<< resolve n
+  I.IsLessOrEqualTo    n -> evalULE  =<< resolve n
+  I.IsGreaterThan      n -> evalUGT  =<< resolve n
+  I.IsGreaterOrEqualTo n -> evalUGE  =<< resolve n
+  I.Select v s           -> join $ evalSelect <$> evalToWHNF v <*> pure s
+  I.Index  v i           -> join $ evalIndex  <$> evalToWHNF v <*> resolve i
+  I.Slice  v b e         -> join $ evalSlice  <$> evalToWHNF v <*> traverse resolve b <*> traverse resolve e
+  I.Call c a             -> evalCall c a
+  I.List li              -> whnfList li
+  I.Block s              -> whnfStruct s
+  I.Interpolation _ _ts  -> undefined -- T.concat <$> traverse evalToString ts
+  I.Ref path             -> evalRef path
+  I.Alias _ _            -> error "unevaluated alias"
+  I.Leaf a               -> pure $ Atom a
+  I.Type c               -> pure $ Type c
+  I.Func f               -> pure $ Func f
+  I.Top                  -> pure Top
+  I.Bottom               -> report ArisedFromLiteral
+
+evalToNF :: Value -> Eval D.Document
+evalToNF = \case
+  Disjoint v d    -> nfDisjunction v d
+  Struct s        -> nfStruct s
+  List l          -> nfList l
+  Atom x          -> pure $ D.Atom x
+  Top             -> pure $ D.Unresolved D.Top
+  NotNull         -> pure $ D.Unresolved D.NotNull
+  Func         x  -> pure $ D.Unresolved $ D.Func         x
+  Type         x  -> pure $ D.Unresolved $ D.Type         x
+  IntegerBound x  -> pure $ D.Unresolved $ D.IntegerBound x
+  FloatBound   x  -> pure $ D.Unresolved $ D.FloatBound   x
+  StringBound  x  -> pure $ D.Unresolved $ D.StringBound  x
+  BytesBound   x  -> pure $ D.Unresolved $ D.BytesBound   x
 
 
 --------------------------------------------------------------------------------
 -- * Disjunction
 
-whnfDisjunction :: Seq (Bool, Thunk) -> Eval WHNFValue
+whnfDisjunction :: Seq (Bool, Thunk) -> Eval Value
 whnfDisjunction disj = mdo
   (result, starred, errors, marked, hasUnevaluated) <-
     disj & flip foldlM (S.empty, S.empty, S.empty, False, False)
@@ -208,146 +216,116 @@ whnfDisjunction disj = mdo
     (Lone x, Empty) -> x
     _               -> Disjoint result starred
 
-nfDisjunction :: Seq WHNFValue -> Seq WHNFValue -> Eval Value
-nfDisjunction = disjunctionWith evalToNF mergeable
-
-disjunctionWith
-  :: (a -> Eval (Value' f))
-  -> (Value' f -> Value' f -> Bool)
-  -> Seq a
-  -> Seq a
-  -> Eval (Value' f)
-disjunctionWith f equal dv dd = do
+nfDisjunction :: Seq Value -> Seq Value -> Eval D.Document
+nfDisjunction dv dd = do
   (vs, es, u) <- foldlM step (Empty, Empty, False) dv
   (ds,  _, _) <- foldlM step (Empty, Empty, False) dd
   when (S.null vs) $
     throwError $ if u then CannotBeEvaluatedYet else EvaluationFailed es
-  pure case (nubBy equal vs, nubBy equal ds) of
+  pure case (nubBy mergeable vs, nubBy mergeable ds) of
     (Lone x, Empty) -> x
-    (v, d)          -> Disjoint v d
+    (v, d)          -> D.Unresolved $ D.Disjoint v d
   where
     step (vs, es, u) w =
-      fmap Right (f w) `catchError` (pure . Left) <&> \case
+      fmap Right (evalToNF w) `catchError` (pure . Left) <&> \case
         Left CannotBeEvaluatedYet -> (vs, es, True)
         Left (EvaluationFailed e) -> (vs, es <> e, u)
         Right v                   -> (vs :|> v, es, u)
 
-mergeable :: Value -> Value -> Bool
+mergeable :: D.Document -> D.Document -> Bool
 mergeable = (==) `on` (Mergeable . abstract Mergeable)
 
 newtype Mergeable a = Mergeable a
   deriving Functor
 
-instance Eq (Mergeable (Value' Mergeable)) where
+instance Eq (Mergeable (D.Document' D.Unresolved' Mergeable)) where
   Mergeable d1 == Mergeable d2 = case (d1, d2) of
-    (V.Top         , V.Top         ) -> True
-    (NotNull       , NotNull       ) -> True
-    (Atom         x, Atom         y) -> x == y
-    (IntegerBound x, IntegerBound y) -> x == y
-    (FloatBound   x, FloatBound   y) -> x == y
-    (StringBound  x, StringBound  y) -> x == y
-    (BytesBound   x, BytesBound   y) -> x == y
-    (V.List       x, V.List       y) -> x == y
-    (Thunk        x, Thunk        y) -> x == y
-    -- WARNING: we ignore attributes for the purpose of merging
-    -- similar values in a disjunction, just like te playground does
-    (Struct s1, Struct s2) -> and @[]
-      [ _sFields      s1 == _sFields      s2
-      , _sConstraints s1 == _sConstraints s2
-      , _sClosed      s1 == _sClosed      s2
-      ]
-    _ -> False
+    (D.Struct x, D.Struct y) -> ((==) `on` fmap D._fValue . D._sFields) x y
+    _                        -> d1 == d2
 
 
 --------------------------------------------------------------------------------
 -- * Unification
 
-evalUnification :: Seq Thunk -> Eval WHNFValue
-evalUnification = foldlM unify V.Top <=< traverse evalToWHNF
+evalUnification :: Seq Thunk -> Eval Value
+evalUnification = foldlM unify Top <=< traverse evalToWHNF
 
-unify :: WHNFValue -> WHNFValue -> Eval WHNFValue
+unify :: Value -> Value -> Eval Value
 unify d1 d2 = case (d1, d2) of
-  (Disjoint v1 s1, Disjoint v2 s2)                 -> distribute  v1   s1   v2   s2
-  (Disjoint v1 s1,              _)                 -> distribute  v1   s1  [d2] [d2]
-  (             _, Disjoint v2 s2)                 -> distribute [d1] [d1]  v2   s2
+  (Disjoint v1 s1, Disjoint v2 s2)     -> distribute  v1   s1   v2   s2
+  (Disjoint v1 s1,              _)     -> distribute  v1   s1  [d2] [d2]
+  (             _, Disjoint v2 s2)     -> distribute [d1] [d1]  v2   s2
 
-  (Thunk (Unification u1), Thunk (Unification u2)) -> pure $ Thunk $ Unification $ u1  <> u2
-  (Thunk (Unification u1), Thunk t2              ) -> pure $ Thunk $ Unification $ u1 :|> t2
-  (Thunk t1              , Thunk (Unification u2)) -> pure $ Thunk $ Unification $ t1 :<| u2
-  (Thunk t1              , Thunk t2              ) -> pure $ Thunk $ Unification [t1, t2]
-  (_                     , Thunk t2              ) -> evalToWHNF t2 >>= \x -> unify d1 x
-  (Thunk t1              , _                     ) -> evalToWHNF t1 >>= \x -> unify x d2
+  (Top, _)                             -> pure d2
+  (_, Top)                             -> pure d1
 
-  (V.Top, _)                                       -> pure d2
-  (_, V.Top)                                       -> pure d1
+  (NotNull, NotNull)                   -> pure NotNull
 
-  (NotNull, NotNull)                               -> pure NotNull
+  (List l1, List l2)                   -> unifyLists l1 l2
+  (  NotNull, List  _)                 -> pure d2
+  (List  _,   NotNull)                 -> pure d1
+  (Struct s1, Struct s2)               -> unifyStructs s1 s2
+  (  NotNull, Struct  _)               -> pure d2
+  (Struct  _,   NotNull)               -> pure d1
 
-  (V.List l1, V.List l2)                           -> unifyLists l1 l2
-  (  NotNull, V.List  _)                           -> pure d2
-  (V.List  _,   NotNull)                           -> pure d1
-  (Struct s1, Struct s2)                           -> unifyStructs s1 s2
-  (  NotNull, Struct  _)                           -> pure d2
-  (Struct  _,   NotNull)                           -> pure d1
+  (Atom   a1, Atom   a2) | a1 == a2    -> pure d1
+  (Atom   a1, NotNull  ) | a1 /= Null  -> pure d1
+  (NotNull,   Atom   a2) | a2 /= Null  -> pure d2
 
-  (Atom   a1, Atom   a2) | a1 == a2                -> pure d1
-  (Atom   a1, NotNull  ) | a1 /= Null              -> pure d1
-  (NotNull,   Atom   a2) | a2 /= Null              -> pure d2
+  (Type IntegerType, Type IntegerType) -> pure d1
+  (Type IntegerType, Type  NumberType) -> pure d1
+  (Type  NumberType, Type IntegerType) -> pure d2
+  (Type   FloatType, Type   FloatType) -> pure d1
+  (Type   FloatType, Type  NumberType) -> pure d1
+  (Type  NumberType, Type   FloatType) -> pure d2
+  (Type  NumberType, Type  NumberType) -> pure d1
+  (Type  StringType, Type  StringType) -> pure d1
+  (Type   BytesType, Type   BytesType) -> pure d1
+  (Type BooleanType, Type BooleanType) -> pure d1
 
-  (V.Type IntegerType, V.Type IntegerType)         -> pure d1
-  (V.Type IntegerType, V.Type  NumberType)         -> pure d1
-  (V.Type  NumberType, V.Type IntegerType)         -> pure d2
-  (V.Type   FloatType, V.Type   FloatType)         -> pure d1
-  (V.Type   FloatType, V.Type  NumberType)         -> pure d1
-  (V.Type  NumberType, V.Type   FloatType)         -> pure d2
-  (V.Type  NumberType, V.Type  NumberType)         -> pure d1
-  (V.Type  StringType, V.Type  StringType)         -> pure d1
-  (V.Type   BytesType, V.Type   BytesType)         -> pure d1
-  (V.Type BooleanType, V.Type BooleanType)         -> pure d1
+  (Type IntegerType, IntegerBound _)   -> pure d2
+  (Type  NumberType, IntegerBound _)   -> pure d2
+  (Type   FloatType,   FloatBound _)   -> pure d2
+  (Type  NumberType,   FloatBound _)   -> pure d2
+  (Type  StringType,  StringBound _)   -> pure d2
+  (Type   BytesType,   BytesBound _)   -> pure d2
+  (IntegerBound _, Type IntegerType)   -> pure d1
+  (IntegerBound _, Type  NumberType)   -> pure d1
+  (  FloatBound _, Type   FloatType)   -> pure d1
+  (  FloatBound _, Type  NumberType)   -> pure d1
+  ( StringBound _, Type  StringType)   -> pure d1
+  (  BytesBound _, Type   BytesType)   -> pure d1
 
-  (V.Type IntegerType, IntegerBound _)             -> pure d2
-  (V.Type  NumberType, IntegerBound _)             -> pure d2
-  (V.Type   FloatType,   FloatBound _)             -> pure d2
-  (V.Type  NumberType,   FloatBound _)             -> pure d2
-  (V.Type  StringType,  StringBound _)             -> pure d2
-  (V.Type   BytesType,   BytesBound _)             -> pure d2
-  (IntegerBound _, V.Type IntegerType)             -> pure d1
-  (IntegerBound _, V.Type  NumberType)             -> pure d1
-  (  FloatBound _, V.Type   FloatType)             -> pure d1
-  (  FloatBound _, V.Type  NumberType)             -> pure d1
-  ( StringBound _, V.Type  StringType)             -> pure d1
-  (  BytesBound _, V.Type   BytesType)             -> pure d1
+  (Atom (Integer x), IntegerBound b)   -> d1 <$ checkWith unreachable x b
+  (Atom (Float   x), FloatBound   b)   -> d1 <$ checkWith unreachable x b
+  (Atom (String  x), StringBound  b)   -> d1 <$ checkWith reMatch     x b
+  (Atom (Bytes   x), BytesBound   b)   -> d1 <$ checkWith unreachable x b
+  (IntegerBound b, Atom (Integer x))   -> d2 <$ checkWith unreachable x b
+  (FloatBound   b, Atom (Float   x))   -> d2 <$ checkWith unreachable x b
+  (StringBound  b, Atom (String  x))   -> d2 <$ checkWith reMatch     x b
+  (BytesBound   b, Atom (Bytes   x))   -> d2 <$ checkWith unreachable x b
 
-  (Atom (Integer x), IntegerBound b)               -> d1 <$ checkWith unreachable x b
-  (Atom (Float   x), FloatBound   b)               -> d1 <$ checkWith unreachable x b
-  (Atom (String  x), StringBound  b)               -> d1 <$ checkWith reMatch     x b
-  (Atom (Bytes   x), BytesBound   b)               -> d1 <$ checkWith unreachable x b
-  (IntegerBound b, Atom (Integer x))               -> d2 <$ checkWith unreachable x b
-  (FloatBound   b, Atom (Float   x))               -> d2 <$ checkWith unreachable x b
-  (StringBound  b, Atom (String  x))               -> d2 <$ checkWith reMatch     x b
-  (BytesBound   b, Atom (Bytes   x))               -> d2 <$ checkWith unreachable x b
+  (Atom (Boolean _), Type BooleanType) -> pure d1
+  (Atom (Integer _), Type IntegerType) -> pure d1
+  (Atom (Integer _), Type  NumberType) -> pure d1
+  (Atom (Float   _), Type   FloatType) -> pure d1
+  (Atom (Float   _), Type  NumberType) -> pure d1
+  (Atom (String  _), Type  StringType) -> pure d1
+  (Atom (Bytes   _), Type   BytesType) -> pure d1
+  (Type BooleanType, Atom (Boolean _)) -> pure d2
+  (Type IntegerType, Atom (Integer _)) -> pure d2
+  (Type  NumberType, Atom (Integer _)) -> pure d2
+  (Type   FloatType, Atom (Float   _)) -> pure d2
+  (Type  NumberType, Atom (Float   _)) -> pure d2
+  (Type  StringType, Atom (String  _)) -> pure d2
+  (Type   BytesType, Atom (Bytes   _)) -> pure d2
 
-  (Atom (Boolean _), V.Type BooleanType)           -> pure d1
-  (Atom (Integer _), V.Type IntegerType)           -> pure d1
-  (Atom (Integer _), V.Type  NumberType)           -> pure d1
-  (Atom (Float   _), V.Type   FloatType)           -> pure d1
-  (Atom (Float   _), V.Type  NumberType)           -> pure d1
-  (Atom (String  _), V.Type  StringType)           -> pure d1
-  (Atom (Bytes   _), V.Type   BytesType)           -> pure d1
-  (V.Type BooleanType, Atom (Boolean _))           -> pure d2
-  (V.Type IntegerType, Atom (Integer _))           -> pure d2
-  (V.Type  NumberType, Atom (Integer _))           -> pure d2
-  (V.Type   FloatType, Atom (Float   _))           -> pure d2
-  (V.Type  NumberType, Atom (Float   _))           -> pure d2
-  (V.Type  StringType, Atom (String  _))           -> pure d2
-  (V.Type   BytesType, Atom (Bytes   _))           -> pure d2
+  (IntegerBound i1, IntegerBound i2)   -> mergeBound Integer IntegerBound i1 i2
+  (FloatBound   f1, FloatBound   f2)   -> mergeBound Float   FloatBound   f1 f2
+  (StringBound  s1, StringBound  s2)   -> mergeBound String  StringBound  s1 s2
+  (BytesBound   b1, BytesBound   b2)   -> mergeBound Bytes   BytesBound   b1 b2
 
-  (IntegerBound i1, IntegerBound i2)               -> mergeBound Integer IntegerBound i1 i2
-  (FloatBound   f1, FloatBound   f2)               -> mergeBound Float   FloatBound   f1 f2
-  (StringBound  s1, StringBound  s2)               -> mergeBound String  StringBound  s1 s2
-  (BytesBound   b1, BytesBound   b2)               -> mergeBound Bytes   BytesBound   b1 b2
-
-  _                                                -> do
+  _                                    -> do
     traceM "CONFLICT"
     traceShowM d1
     traceShowM d2
@@ -399,41 +377,49 @@ unify d1 d2 = case (d1, d2) of
 
 unifies v1 v2 = (True <$ unify v1 v2) `catchError` const (pure False)
 
-distribute :: Seq WHNFValue -> Seq WHNFValue -> Seq WHNFValue -> Seq WHNFValue -> Eval WHNFValue
-distribute v1 d1 v2 d2 =
-  disjunctionWith
-    (uncurry unify)
-    (\_ _ -> False)
-    (liftA2 (,) v1 v2)
-    (liftA2 (,) d1 d2)
+distribute :: Seq Value -> Seq Value -> Seq Value -> Seq Value -> Eval Value
+distribute v1 d1 v2 d2 = do
+  (vs, es, u) <- foldlM step (Empty, Empty, False) (liftA2 (,) v1 v2)
+  (ds,  _, _) <- foldlM step (Empty, Empty, False) (liftA2 (,) d1 d2)
+  when (S.null vs) $
+    throwError $ if u then CannotBeEvaluatedYet else EvaluationFailed es
+  pure case (vs, ds) of
+    (Lone x, Empty) -> x
+    (v, d)          -> Disjoint v d
+  where
+    step (vs, es, u) (x, y) =
+      fmap Right (unify x y) `catchError` (pure . Left) <&> \case
+        Left CannotBeEvaluatedYet -> (vs, es, True)
+        Left (EvaluationFailed e) -> (vs, es <> e, u)
+        Right v                   -> (vs :|> v, es, u)
 
-unifyLists :: WHNFListInfo -> WHNFListInfo -> Eval WHNFValue
-unifyLists (V.ListInfo l1 c1) (V.ListInfo l2 c2) = do
+unifyLists :: ListInfo -> ListInfo -> Eval Value
+unifyLists (ListInfo l1 c1) (ListInfo l2 c2) = do
   let n1 = S.length l1
       n2 = S.length l2
   when (n1 < n2 && S.null c1) $ error "list length mismatch"
   when (n2 < n1 && S.null c2) $ error "list length mismatch"
   let c3 = c1 <> c2
       l3 = go l1 l2
-  pure $ V.List $ V.ListInfo l3 c3
+  pure $ List $ ListInfo l3 c3
   where
-    go :: Seq (Const Thunk WHNFValue) -> Seq (Const Thunk WHNFValue) -> Seq (Const Thunk WHNFValue)
+    go :: Seq Thunk -> Seq Thunk -> Seq Thunk
     go Empty      Empty      = Empty
-    go xs         Empty      = xs <&> \x -> Const $ Unification $ fmap getConst (x :<| c2)
-    go Empty      ys         = ys <&> \y -> Const $ Unification $ fmap getConst (y :<| c1)
-    go (x :<| xs) (y :<| ys) = Const (Unification [getConst x, getConst y]) :<| go xs ys
+    go xs         Empty      = xs <&> \x -> I.Unification (x :<| c2)
+    go Empty      ys         = ys <&> \y -> I.Unification (y :<| c1)
+    go (x :<| xs) (y :<| ys) = I.Unification [x, y] :<| go xs ys
 
-unifyConstraints :: Seq (WHNFValue, Const Thunk a) -> FieldLabel -> WHNFField -> Eval WHNFField
+unifyConstraints :: Seq (Value, Thunk) -> FieldLabel -> Field -> Eval Field
 unifyConstraints constraints name = fValue \t -> foldlM step t constraints
   where
     nameAtom = Atom $ String $ labelName name
     step v (cond, expr) =
-      unifies nameAtom cond <&> bool v
+      unifies nameAtom cond <&> bool v (I.Unification [v, expr])
         -- TODO: MUST CORRECT PATHS
         -- TODO: replace reference to captured name by 'nameAtom'
-        (Const $ Unification [getConst v, getConst expr])
 
-unifyStructs :: WHNFStructInfo -> WHNFStructInfo -> Eval WHNFValue
+
+unifyStructs :: StructInfo -> StructInfo -> Eval Value
 unifyStructs s1 s2 = do
   f1s <- _sFields s1 & M.traverseWithKey \label field ->
     unifyConstraints (_sConstraints s2) label field
@@ -446,8 +432,8 @@ unifyStructs s1 s2 = do
     , _sClosed      = _sClosed s1 || _sClosed s2 -- TODO: ?
     }
   where
-    unifyFields f1 f2 = V.Field
-      { _fValue      = Const $ Unification $ getConst <$> [_fValue f1, _fValue f2]
+    unifyFields f1 f2 = Field
+      { _fValue      = I.Unification [_fValue f1, _fValue f2]
       , _fOptional   = _fOptional f1 <> _fOptional f2
       , _fAttributes = M.unionWith (<>) (_fAttributes f1) (_fAttributes f2)
       }
@@ -456,12 +442,12 @@ unifyStructs s1 s2 = do
 --------------------------------------------------------------------------------
 -- * List and embeddings
 
-whnfList :: I.ListInfo -> Eval WHNFValue
+whnfList :: I.ListInfo -> Eval Value
 whnfList I.ListInfo {..} = do
   ts <- traverse evalEmbeddingThunks listElements
-  pure $ V.List $ V.ListInfo
-    { _lValues  = fmap Const $ join ts
-    , _lDefault = fmap Const $ fromList $ toList listConstraint
+  pure $ List $ ListInfo
+    { _lValues  = join ts
+    , _lDefault = fromList $ toList listConstraint
     }
 
 evalEmbeddingThunks :: Embedding -> Eval (Seq Thunk)
@@ -469,31 +455,29 @@ evalEmbeddingThunks = \case
   InlineThunk      t -> pure $ pure t
   Comprehension cs b -> undefined cs b
 
-nfList :: WHNFListInfo -> Eval Value
-nfList V.ListInfo {..} = do
-  res <- traverse (evalToNF . Thunk . getConst) _lValues
-  pure $ V.List $ V.ListInfo res []
+nfList :: ListInfo -> Eval D.Document
+nfList ListInfo {..} = D.List <$> traverse evalThunk _lValues
 
 
 --------------------------------------------------------------------------------
 -- * Struct
 
-whnfStruct :: BlockInfo -> Eval WHNFValue
+whnfStruct :: BlockInfo -> Eval Value
 whnfStruct BlockInfo {..} = do
   cs <- foldlM resolveConstraint Empty _biConstraints
   fs <- M.traverseWithKey (mergeFields cs) _biIdentFields
-  pure $ V.Struct $ StructInfo fs cs _biAttributes False
+  pure $ Struct $ StructInfo fs cs _biAttributes False
   where
     -- | we can already resolve constraints' patterns: they are not allowed to
     -- refer to fields from within this block
     resolveConstraint res (pat, val) =
       do n <- evalToWHNF pat
-         pure $ res :|> (n, Const val)
+         pure $ res :|> (n, val)
       `catchError` const (pure res)
     mergeFields cs label ts = do
       let (unifiedThunks, opts, attrs) = foldl step (Empty, A.Optional, M.empty) ts
-          thunk = Unification unifiedThunks
-          field = V.Field (Const thunk) opts attrs
+          thunk = I.Unification unifiedThunks
+          field = Field (thunk) opts attrs
       unifyConstraints cs label field
     step (ts, opt, attrs) I.Field {..} =
       ( ts :|> fieldValue
@@ -501,27 +485,27 @@ whnfStruct BlockInfo {..} = do
       , M.unionWith (<>) attrs fieldAttributes
       )
 
-nfStruct :: WHNFStructInfo -> Eval Value
+nfStruct :: StructInfo -> Eval D.Document
 nfStruct StructInfo {..} = do
   parent <- view currentPath
   let newMappings = M.toList _sFields <&> \(label, field) ->
-        (parent :|> PathField label, getConst $ _fValue field)
+        (parent :|> PathField label, _fValue field)
   local (knownThunks %~ mappend (M.fromList newMappings)) do
     fs <- foldlM processField mempty $ M.toList _sFields
-    pure $ Struct $ StructInfo fs [] _sAttributes _sClosed
+    pure $ D.Struct $ D.StructInfo fs _sAttributes
   where
-    processField res (label, V.Field {..})
+    processField res (label, Field {..})
       | _fOptional == A.Optional   = pure res
       | labelType label /= Regular = pure res
       | otherwise = withPath (PathField label) do
-          result <- evalToNF $ Thunk $ getConst _fValue
-          pure $ M.insert label (V.Field result _fOptional _fAttributes) res
+          result <- evalThunk _fValue
+          pure $ M.insert (labelName label) (D.Field result _fAttributes) res
 
 
 --------------------------------------------------------------------------------
 -- * Ref
 
-evalRef :: Path -> Eval WHNFValue
+evalRef :: Path -> Eval Value
 evalRef path = do
   -- current <- view currentPath
   -- TODO: cycle detection goes here
@@ -540,31 +524,31 @@ evalRef path = do
 --------------------------------------------------------------------------------
 -- * Primary
 
-evalSelect :: WHNFValue -> FieldLabel -> Eval WHNFValue
+evalSelect :: Value -> FieldLabel -> Eval Value
 evalSelect v label = case v of
   Struct s -> do
     when (labelType label /= Regular) $
       throwError CannotBeEvaluatedYet
     fieldInfo <- M.lookup label (_sFields s)
       `onNothing` throwError CannotBeEvaluatedYet
-    evalToWHNF $ getConst $ _fValue fieldInfo
+    evalToWHNF $ _fValue fieldInfo
   w -> typeMismatch "." w
 
-evalIndex :: WHNFValue -> WHNFValue -> Eval WHNFValue
+evalIndex :: Value -> Value -> Eval Value
 evalIndex = curry \case
-  (V.List l, Atom (Integer i)) -> do
+  (List l, Atom (Integer i)) -> do
     r <- S.lookup (fromInteger i) (_lValues l)
       `onNothing` report undefined
-    evalToWHNF $ getConst r
+    evalToWHNF r
   (Struct s, Atom (String  i)) -> do
     fieldInfo <- M.lookup (I.FieldLabel i Regular) (_sFields s)
       `onNothing` report undefined
-    evalToWHNF $ getConst $ _fValue fieldInfo
+    evalToWHNF $ _fValue fieldInfo
   (a, b) -> typeMismatch2 "[]" a b
 
-evalSlice :: WHNFValue -> Maybe WHNFValue -> Maybe WHNFValue -> Eval WHNFValue
+evalSlice :: Value -> Maybe Value -> Maybe Value -> Eval Value
 evalSlice v b e = case v of
-  V.List (V.ListInfo l _) -> do
+  List (ListInfo l _) -> do
     let n = S.length l
     sb <- resolveInt b 0
     se <- resolveInt e n
@@ -572,7 +556,7 @@ evalSlice v b e = case v of
     when (sb <  0) $ report undefined
     when (se >  n) $ report undefined
     let res = S.take (se - sb) $ S.drop sb l
-    pure $ V.List $ V.ListInfo res Empty
+    pure $ List $ ListInfo res Empty
   _ -> report undefined
   where
     resolveInt x d = case x of
@@ -580,9 +564,9 @@ evalSlice v b e = case v of
       Nothing                 -> pure d
       _                       -> report undefined
 
-evalCall :: Thunk -> [Thunk] -> Eval WHNFValue
+evalCall :: Thunk -> [Thunk] -> Eval Value
 evalCall fun args = evalToWHNF fun >>= \case
-  V.Func (Function _ f) -> f =<< traverse evalToWHNF args
+  Func (Function _ f) -> f =<< traverse evalToWHNF args
   _                   -> report undefined
 
 
@@ -778,18 +762,18 @@ evalUGE = \case
 report :: BottomSource -> Eval a
 report = throwError . EvaluationFailed . pure
 
-typeMismatch :: String -> WHNFValue -> Eval a
+typeMismatch :: String -> Value -> Eval a
 typeMismatch _ _ = throwError CannotBeEvaluatedYet
 
-typeMismatch2  :: String -> WHNFValue -> WHNFValue -> Eval a
+typeMismatch2  :: String -> Value -> Value -> Eval a
 typeMismatch2 _ _ _ = throwError CannotBeEvaluatedYet
 
-orRecoverWith :: (Thunk -> Eval (Value' f)) -> Thunk -> Eval (Value' f)
+orRecoverWith :: (Thunk -> Eval D.Document) -> Thunk -> Eval D.Document
 orRecoverWith action thunk = action thunk `catchError` \case
-  CannotBeEvaluatedYet -> pure $ Thunk thunk
+  CannotBeEvaluatedYet -> pure $ D.Unresolved $ D.Thunk thunk
   err                  -> throwError err
 
-catchBottom :: Eval (Value' f) -> Eval (Either (Seq BottomSource) (Value' f))
+catchBottom :: Eval a -> Eval (Either (Seq BottomSource) a)
 catchBottom action = fmap Right action `catchError` \case
   EvaluationFailed errs -> pure $ Left errs
   err                   -> throwError err

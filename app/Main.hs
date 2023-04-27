@@ -4,8 +4,8 @@ import "this" Prelude
 
 import Control.Monad.Loops
 import Data.Char
-import Data.Text                qualified as T
-import Data.Text.IO             qualified as T
+import Data.Text                 qualified as T
+import Data.Text.IO              qualified as T
 import System.Console.Haskeline
 import System.Directory
 import System.Exit
@@ -13,13 +13,13 @@ import System.FilePath
 import Text.Pretty.Simple
 
 import Lang.Cue.Error
-import Lang.Cue.Eval
-import Lang.Cue.Inline
 import Lang.Cue.Internal.HKD
-import Lang.Cue.Lexer
 import Lang.Cue.Location
-import Lang.Cue.Parser
-import Lang.Cue.Translate
+import Lang.Cue.Stages.Eval
+import Lang.Cue.Stages.Inline
+import Lang.Cue.Stages.Lexer
+import Lang.Cue.Stages.Parser
+import Lang.Cue.Stages.Translate
 
 
 main :: IO ()

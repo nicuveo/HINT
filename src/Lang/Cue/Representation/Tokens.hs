@@ -1,6 +1,6 @@
 {-# LANGUAGE UndecidableInstances #-}
 
-module Lang.Cue.Tokens where
+module Lang.Cue.Representation.Tokens where
 
 import "this" Prelude
 

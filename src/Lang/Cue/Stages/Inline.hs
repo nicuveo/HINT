@@ -1,4 +1,4 @@
-module Lang.Cue.Inline
+module Lang.Cue.Stages.Inline
   ( substitutePaths
   , inlineAliases
   ) where
@@ -10,7 +10,7 @@ import Data.HashMap.Strict             qualified as M
 
 import Lang.Cue.Error
 import Lang.Cue.Internal.IndexedPlated
-import Lang.Cue.IR                     as I
+import Lang.Cue.Representation.IR      as I
 
 
 --------------------------------------------------------------------------------

@@ -2,30 +2,30 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 -- | This module contains all code that translates from the AST into the IR.
-module Lang.Cue.Translate
+module Lang.Cue.Stages.Translate
   ( translateFile
   , translateExpression
   ) where
 
 import "this" Prelude
 
-import Control.Lens           hiding (List, (|>))
-import Control.Monad.Extra    (unlessM, whenJust)
+import Control.Lens                   hiding (List, (|>))
+import Control.Monad.Extra            (unlessM, whenJust)
 import Control.Monad.Validate
 import Data.Char
-import Data.HashMap.Strict    qualified as M
-import Data.HashSet           qualified as S
-import Data.List              qualified as L
-import Data.List.NonEmpty     as NE
-import Data.Sequence          as Seq
-import Data.Text              qualified as T
+import Data.HashMap.Strict            qualified as M
+import Data.HashSet                   qualified as S
+import Data.List                      qualified as L
+import Data.List.NonEmpty             as NE
+import Data.Sequence                  as Seq
+import Data.Text                      qualified as T
 import GHC.Stack
 
-import Lang.Cue.AST           as A
-import Lang.Cue.Builtins      qualified as F
 import Lang.Cue.Error
-import Lang.Cue.IR            as I
-import Lang.Cue.Tokens
+import Lang.Cue.Packages.Builtins     qualified as F
+import Lang.Cue.Representation.AST    as A
+import Lang.Cue.Representation.IR     as I
+import Lang.Cue.Representation.Tokens
 
 
 --------------------------------------------------------------------------------

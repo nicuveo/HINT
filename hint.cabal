@@ -23,22 +23,23 @@ source-repository head
 
 library
   exposed-modules:
-      Lang.Cue.AST
-      Lang.Cue.Builtins
       Lang.Cue.Error
-      Lang.Cue.Eval
-      Lang.Cue.Inline
       Lang.Cue.Internal.HKD
       Lang.Cue.Internal.IndexedPlated
       Lang.Cue.Internal.NoShow
-      Lang.Cue.IR
-      Lang.Cue.Lexer
       Lang.Cue.Location
-      Lang.Cue.Parser
+      Lang.Cue.Packages.Builtins
       Lang.Cue.Printer
-      Lang.Cue.Tokens
-      Lang.Cue.Translate
-      Lang.Cue.Value
+      Lang.Cue.Representation.AST
+      Lang.Cue.Representation.Document
+      Lang.Cue.Representation.IR
+      Lang.Cue.Representation.Tokens
+      Lang.Cue.Representation.Value
+      Lang.Cue.Stages.Eval
+      Lang.Cue.Stages.Inline
+      Lang.Cue.Stages.Lexer
+      Lang.Cue.Stages.Parser
+      Lang.Cue.Stages.Translate
   other-modules:
       Prelude
   hs-source-dirs:
@@ -105,22 +106,23 @@ library
 executable evalexpr
   main-is: Main.hs
   other-modules:
-      Lang.Cue.AST
-      Lang.Cue.Builtins
       Lang.Cue.Error
-      Lang.Cue.Eval
-      Lang.Cue.Inline
       Lang.Cue.Internal.HKD
       Lang.Cue.Internal.IndexedPlated
       Lang.Cue.Internal.NoShow
-      Lang.Cue.IR
-      Lang.Cue.Lexer
       Lang.Cue.Location
-      Lang.Cue.Parser
+      Lang.Cue.Packages.Builtins
       Lang.Cue.Printer
-      Lang.Cue.Tokens
-      Lang.Cue.Translate
-      Lang.Cue.Value
+      Lang.Cue.Representation.AST
+      Lang.Cue.Representation.Document
+      Lang.Cue.Representation.IR
+      Lang.Cue.Representation.Tokens
+      Lang.Cue.Representation.Value
+      Lang.Cue.Stages.Eval
+      Lang.Cue.Stages.Inline
+      Lang.Cue.Stages.Lexer
+      Lang.Cue.Stages.Parser
+      Lang.Cue.Stages.Translate
       Prelude
       Paths_hint
   hs-source-dirs:
@@ -194,22 +196,23 @@ test-suite tests
   type: exitcode-stdio-1.0
   main-is: Tests.hs
   other-modules:
-      Lang.Cue.AST
-      Lang.Cue.Builtins
       Lang.Cue.Error
-      Lang.Cue.Eval
-      Lang.Cue.Inline
       Lang.Cue.Internal.HKD
       Lang.Cue.Internal.IndexedPlated
       Lang.Cue.Internal.NoShow
-      Lang.Cue.IR
-      Lang.Cue.Lexer
       Lang.Cue.Location
-      Lang.Cue.Parser
+      Lang.Cue.Packages.Builtins
       Lang.Cue.Printer
-      Lang.Cue.Tokens
-      Lang.Cue.Translate
-      Lang.Cue.Value
+      Lang.Cue.Representation.AST
+      Lang.Cue.Representation.Document
+      Lang.Cue.Representation.IR
+      Lang.Cue.Representation.Tokens
+      Lang.Cue.Representation.Value
+      Lang.Cue.Stages.Eval
+      Lang.Cue.Stages.Inline
+      Lang.Cue.Stages.Lexer
+      Lang.Cue.Stages.Parser
+      Lang.Cue.Stages.Translate
       Prelude
       Arbitrary
       Paths_hint

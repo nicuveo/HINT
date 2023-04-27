@@ -1,23 +1,23 @@
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
 
-module Lang.Cue.Lexer (tokenize) where
+module Lang.Cue.Stages.Lexer (tokenize) where
 
-import "this" Prelude             hiding (exponent)
+import "this" Prelude                 hiding (exponent)
 
 import Data.Char
 import Data.Scientific
-import Data.Semigroup             (Min (..))
-import Data.Sequence              qualified as S
-import Data.Set                   ()
-import Data.Text                  qualified as T
-import Text.Megaparsec            hiding (Token, token, tokens)
+import Data.Semigroup                 (Min (..))
+import Data.Sequence                  qualified as S
+import Data.Set                       ()
+import Data.Text                      qualified as T
+import Text.Megaparsec                hiding (Token, token, tokens)
 import Text.Megaparsec.Char
-import Text.Megaparsec.Char.Lexer qualified as L
+import Text.Megaparsec.Char.Lexer     qualified as L
 
 import Lang.Cue.Error
 import Lang.Cue.Internal.HKD
-import Lang.Cue.Location          hiding (getOffset)
-import Lang.Cue.Tokens
+import Lang.Cue.Location              hiding (getOffset)
+import Lang.Cue.Representation.Tokens
 
 
 --------------------------------------------------------------------------------

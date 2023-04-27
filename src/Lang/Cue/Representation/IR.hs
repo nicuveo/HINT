@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Lang.Cue.IR where
+module Lang.Cue.Representation.IR where
 
 import                "this" Prelude
 
@@ -8,11 +8,11 @@ import                Control.Lens                    hiding (List)
 import                Data.HashMap.Strict             qualified as M
 import                Data.Scientific
 
-import                Lang.Cue.AST                    qualified as A
-import {-# SOURCE #-} Lang.Cue.Eval                   qualified as E
 import                Lang.Cue.Internal.IndexedPlated
-import                Lang.Cue.Tokens                 qualified as T
-import {-# SOURCE #-} Lang.Cue.Value                  qualified as V
+import                Lang.Cue.Representation.AST     qualified as A
+import                Lang.Cue.Representation.Tokens  qualified as T
+import {-# SOURCE #-} Lang.Cue.Representation.Value   qualified as V
+import {-# SOURCE #-} Lang.Cue.Stages.Eval            qualified as E
 
 
 --------------------------------------------------------------------------------
@@ -277,7 +277,7 @@ data Clause
 -- part of the resulting document.
 data Function = Function
   { functionName :: Text
-  , functionBody :: [V.WHNFValue] -> E.Eval V.WHNFValue
+  , functionBody :: [V.Value] -> E.Eval V.Value
   }
 
 instance Show Function where

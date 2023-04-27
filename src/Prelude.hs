@@ -51,6 +51,7 @@ import Data.Foldable                   as P (asum, fold, foldMap', foldlM,
                                              foldrM, for_, toList, traverse_)
 import Data.Function                   as P (on, (&))
 import Data.Functor                    as P (($>), (<&>))
+import Data.Functor.Const              as P (Const (..))
 import Data.Hashable                   as P (Hashable)
 import Data.HashMap.Strict             as P (HashMap, mapKeys)
 import Data.HashSet                    as P (HashSet)

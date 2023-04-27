@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
 {-# LANGUAGE RecursiveDo #-}
 
-module Lang.Cue.Parser
+module Lang.Cue.Stages.Parser
   ( parse
   , Grammar
   , sourceFile
@@ -16,11 +16,11 @@ import Data.Text                       qualified as T
 import Text.Earley                     hiding (Grammar, Parser, rule)
 import Text.Earley                     qualified as E
 
-import Lang.Cue.AST
 import Lang.Cue.Error
-import Lang.Cue.Lexer
 import Lang.Cue.Location
-import Lang.Cue.Tokens
+import Lang.Cue.Representation.AST
+import Lang.Cue.Representation.Tokens
+import Lang.Cue.Stages.Lexer
 
 
 --------------------------------------------------------------------------------

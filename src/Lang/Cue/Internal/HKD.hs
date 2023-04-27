@@ -103,3 +103,12 @@ reify f = ffmap  (Identity . f)
 -- use an explicit @Identity a -> f a@ one.
 abstract :: (Functor f, FFunctor t) => (forall a. a -> f a) -> t Identity -> t f
 abstract f = ffmap  (f . runIdentity)
+
+
+--------------------------------------------------------------------------------
+-- * Void
+
+data VoidF f
+
+instance FFunctor VoidF where
+  ffmap _ = \case {}

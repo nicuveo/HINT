@@ -1,10 +1,10 @@
-module Lang.Cue.AST where
+module Lang.Cue.Representation.AST where
 
 import "this" Prelude
 
 import Data.Scientific
 
-import Lang.Cue.Tokens
+import Lang.Cue.Representation.Tokens
 
 
 --------------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-module Lang.Cue.Builtins
+module Lang.Cue.Packages.Builtins
   ( lenFunc
   , closeFunc
   , andFunc
@@ -11,14 +11,14 @@ module Lang.Cue.Builtins
 
 import "this" Prelude
 
-import Data.HashMap.Strict qualified as M
-import Data.List           qualified as L
+import Data.HashMap.Strict           qualified as M
+import Data.List                     qualified as L
 import Data.Sequence
-import Data.Text           qualified as T
+import Data.Text                     qualified as T
 
-import Lang.Cue.Eval
-import Lang.Cue.IR         as I
-import Lang.Cue.Value      as V
+import Lang.Cue.Representation.IR    as I
+import Lang.Cue.Representation.Value as V
+import Lang.Cue.Stages.Eval
 
 
 --------------------------------------------------------------------------------
@@ -59,7 +59,7 @@ remFunc  = division "rem"  rem
 --------------------------------------------------------------------------------
 -- * Helpers
 
-validateArgsLength :: Int -> [WHNFValue] -> Eval ()
+validateArgsLength :: Int -> [Value] -> Eval ()
 validateArgsLength n args =
   when (n /= L.length args) $
     report undefined

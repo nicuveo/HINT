@@ -1,4 +1,4 @@
-module Lang.Cue.Eval where
+module Lang.Cue.Stages.Eval where
 
 import "this" Prelude
 
