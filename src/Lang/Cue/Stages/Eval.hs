@@ -42,20 +42,21 @@ import Debug.Trace
 -- * Evaluation monad
 
 newtype Eval a = Eval
-  { runEval :: ReaderT Scope (Except EvalError) a
+  { runEval :: ReaderT Scope (StateT [Path] (Except EvalError)) a
   }
   deriving
     ( Functor
     , Applicative
     , Monad
     , MonadReader Scope
+    , MonadState [Path]
     , MonadError EvalError
     , MonadFix
     )
 
 data Scope = Scope
-  { _currentPath :: Path
-  , _knownThunks :: HashMap Path Thunk
+  { _knownThunks :: HashMap Path Thunk
+  , _currentPath :: Path
   }
   deriving Show
 
@@ -71,7 +72,8 @@ eval rootToken = do
   inlinedRoot <- inlineAliases rootToken
   evalThunk inlinedRoot
     & runEval
-    & flip runReaderT (Scope [] mempty)
+    & flip runReaderT (Scope mempty mempty)
+    & flip evalStateT []
     & runExcept
     & translateError inlinedRoot
   where
@@ -87,6 +89,7 @@ debug :: Eval a -> Either EvalError a
 debug x = x
   & runEval
   & flip runReaderT (Scope [] mempty)
+  & flip evalStateT []
   & runExcept
 
 
@@ -99,17 +102,23 @@ debug x = x
 withPath :: PathElem -> Eval a -> Eval a
 withPath label action = do
   parent <- view currentPath
+  put []
   local (currentPath .~ (parent :|> label)) action
 
 retrieveThunk :: Path -> Eval Thunk
 retrieveThunk originalPath = do
   newPath <- asks _currentPath
-  thunk <- asks (M.lookup originalPath . _knownThunks)
-    `onNothingM` do traceShowM originalPath
-                    traceShowM newPath
-                    traceShowM =<< ask
-                    panic ThunkNotFound
-  pure $ substitutePaths originalPath newPath thunk
+  stack <- get
+  if originalPath `elem` stack
+  then pure $ I.Top
+  else do
+    modify (originalPath:)
+    thunk <- asks (M.lookup originalPath . _knownThunks)
+      `onNothingM` do traceShowM originalPath
+                      traceShowM newPath
+                      traceShowM =<< ask
+                      panic ThunkNotFound
+    pure $ substitutePaths originalPath newPath thunk
 
 
 --------------------------------------------------------------------------------
