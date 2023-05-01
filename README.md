@@ -50,89 +50,28 @@ HINT is a parser / interpreter library for the [CUE language](https://cuelang.or
 Inconsistencies in the reference, weird behaviours in the playground... Feedback to submit to the CUE community, and questions to ask about the language.
 
 - [x] splices aren't documented in the reference (https://github.com/cue-lang/cue/discussions/2368, https://github.com/cue-lang/cue/issues/772)
-- [ ] the reference implementation's lexer accepts tokens that are not mentioned in the reference, such as the power operator `^` and the arrow operator `<-`
-- [ ] why does CUE reject newlines in string interpolations?
-- [ ] ambiguous grammar: why does the reference insists on a distinction between `QualifiedIdentifier` and `Selector`? `import "math", a: math` is undocumented but valid, and evaluates to a struct containing all the public declaration of the package.
+- [x] the reference implementation's lexer accepts tokens that are not mentioned in the reference, such as the power operator `^` and the arrow operator `<-` (https://github.com/cue-lang/cue/discussions/2385)
+- [x] why does CUE reject newlines in string interpolations? (https://github.com/cue-lang/cue/discussions/2384)
+- [x] ambiguous grammar: why does the reference insists on a distinction between `QualifiedIdentifier` and `Selector`? (https://github.com/cue-lang/cue/discussions/2386)
 - attributes:
-  - [ ] the playground discards attributes before the package name when a package name is present
-  - [ ] the playground allows attributes between package name and imports (contradicting the grammar); are those meant to be associated to the imports or to the document?
-  - [ ] disjunction deduplicates `s1 | s2` into `s1` if they are similar struct *even if their attributes differ*, keeping the attributes of the left-most one
-  - [ ] disjunction can create new attributes:
-```cue
-// in
-a: {
-  a:1
-  @foo(bar)
-}
-b:{
-  a:2
-  @foo(baz)
-}
-c: a | b
-
-// out
-a: {
-  @foo(baz)
-  a: 1
-}
-b: {
-  @foo(bar)
-  a: 2
-}
-c: {
-  {
-    @foo(baz)
-    a: 1
-  } |
-  {
-    @foo(bar)
-    a: 2
-  }
-  @foo(bar) // why?
-}
-```
+  - [x] the playground discards attributes before the package name when a package name is present (https://github.com/cue-lang/cue/issues/2371)
+  - [x] the playground allows attributes between package name and imports (https://github.com/cue-lang/cue/issues/2371)
+  - [x] disjunction deduplicates `s1 | s2` into `s1` if they are similar struct *even if their attributes differ*, keeping the attributes of the left-most one (https://github.com/cue-lang/cue/issues/2372)
+  - [x] disjunction can create new attributes (https://github.com/cue-lang/cue/issues/2373)
 - imports
   - [ ] the documented `import "math/bits:bits"` syntax doesn't seem to work?
   - [ ] the playground does not reject having multiple imports with the same alias
 - mandated utilisation
-  - [ ] the reference doesn't document the fact that aliases must be used
+  - [x] the reference doesn't document the fact that aliases must be used (https://github.com/cue-lang/cue/issues/2381)
   - [ ] the reference doesn't document the fact that imports must be used
 - aliases
-  - [ ] the playground will emit erroneously cue expressions by eagerly inlining aliases
-```cue
-// in
-a: {
-  x = b: number
-  d: {
-    b: 1
-    c: x & a.z
-  }
-}
-
-// out
-a: {
-  b: number
-  d: {
-    b: 1
-    c: b & a.z // wrong b
-  }
-}
-```
-  - [ ] aliasing to a constraint leads to incorrect output
-```cue
-// in
-r = [!=null]: {a: r}
-a: {}
-
-// out
-a: {
-  a: X
-}
-```
+  - [x] the playground will emit erroneously cue expressions by eagerly inlining aliases (https://github.com/cue-lang/cue/issues/2378)
+  - [x] aliasing to a constraint leads to incorrect output (https://github.com/cue-lang/cue/issues/2374)
   - [ ] aliases will be automatically renamed in the output?
-  - [ ]the reference claims that an `Embedding` can be an `AliasExpr`, but the playground rejects such aliases
-  - [ ] the reference claims that aliases to optional fields are only visible within the field, but the playground disagrees
-- [ ] what is the meaning of non-string constraints? why don't they result in an error?
-- [ ] the reference claims that `len([1,2,3,...]` is `>= 3`, but the playground resolves it to `3`
-- [ ] the playground allows "_" as an alias, but it can't be used, which always results in an error
-- [ ] the reference claims that default values are propagated through list indexing, but that doesn't seem to be true?
+  - [x] the reference claims that an `Embedding` can be an `AliasExpr`, but the playground rejects such aliases (https://github.com/cue-lang/cue/issues/2377)
+  - [x] the reference claims that aliases to optional fields are only visible within the field, but the playground disagrees (https://github.com/cue-lang/cue/issues/2379)
+- [x] what is the meaning of non-string constraints? why don't they result in an error? (https://github.com/cue-lang/cue/discussions/2383)
+- [x] the reference claims that `len([1,2,3,...]` is `>= 3`, but the playground resolves it to `3` (https://github.com/cue-lang/cue/issues/2376)
+- [x] the playground allows "_" as an alias, but it can't be used, which always results in an error (https://github.com/cue-lang/cue/issues/2381)
+- [x] the reference claims that default values are propagated through list indexing, but that doesn't seem to be true? (https://github.com/cue-lang/cue/issues/2382)
+- [x] `>(<=3)` and other unary conditions on bounds are not documented (https://github.com/cue-lang/cue/issues/2380)
